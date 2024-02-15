@@ -34,9 +34,9 @@
 // accelerators/bvh.cpp*
 #include "bvh.h"
 #include "interaction.h"
-#include "paramset.h"
 #include "parallel.h"
 #include <algorithm>
+#include <stdexcept>
 
 namespace pbrt {
 
@@ -59,9 +59,9 @@ struct BVHBuildNode {
         nPrimitives = n;
         bounds = b;
         children[0] = children[1] = nullptr;
-        ++leafNodes;
-        ++totalLeafNodes;
-        totalPrimitives += n;
+        // ++leafNodes;
+        // ++totalLeafNodes;
+        // totalPrimitives += n;
     }
     void InitInterior(int axis, BVHBuildNode *c0, BVHBuildNode *c1) {
         children[0] = c0;
@@ -69,7 +69,7 @@ struct BVHBuildNode {
         bounds = Union(c0->bounds, c1->bounds);
         splitAxis = axis;
         nPrimitives = 0;
-        ++interiorNodes;
+        // ++interiorNodes;
     }
     Bounds3f bounds;
     BVHBuildNode *children[2];
@@ -179,7 +179,6 @@ BVHAccel::BVHAccel(std::vector<std::shared_ptr<Primitive>> p,
     : maxPrimsInNode(std::min(255, maxPrimsInNode)),
       splitMethod(splitMethod),
       primitives(std::move(p)) {
-    ProfilePhase _(Prof::AccelConstruction);
     if (primitives.empty()) return;
     // Build BVH from _primitives_
 
@@ -655,7 +654,6 @@ BVHAccel::~BVHAccel() { FreeAligned(nodes); }
 
 bool BVHAccel::Intersect(const Ray &ray, SurfaceInteraction *isect) const {
     if (!nodes) return false;
-    ProfilePhase p(Prof::AccelIntersect);
     bool hit = false;
     Vector3f invDir(1 / ray.d.x, 1 / ray.d.y, 1 / ray.d.z);
     int dirIsNeg[3] = {invDir.x < 0, invDir.y < 0, invDir.z < 0};
@@ -695,7 +693,6 @@ bool BVHAccel::Intersect(const Ray &ray, SurfaceInteraction *isect) const {
 
 bool BVHAccel::IntersectP(const Ray &ray) const {
     if (!nodes) return false;
-    ProfilePhase p(Prof::AccelIntersectP);
     Vector3f invDir(1.f / ray.d.x, 1.f / ray.d.y, 1.f / ray.d.z);
     int dirIsNeg[3] = {invDir.x < 0, invDir.y < 0, invDir.z < 0};
     int nodesToVisit[64];
@@ -733,7 +730,7 @@ bool BVHAccel::IntersectP(const Ray &ray) const {
 
 std::shared_ptr<BVHAccel> CreateBVHAccelerator(
     std::vector<std::shared_ptr<Primitive>> prims, const ParamSet &ps) {
-    std::string splitMethodName = ps.FindOneString("splitmethod", "sah");
+    std::string splitMethodName = "sah"; // ps.FindOneString("splitmethod", "sah"); // TODO: Find proper way to handle this config value
     BVHAccel::SplitMethod splitMethod;
     if (splitMethodName == "sah")
         splitMethod = BVHAccel::SplitMethod::SAH;
@@ -744,12 +741,13 @@ std::shared_ptr<BVHAccel> CreateBVHAccelerator(
     else if (splitMethodName == "equal")
         splitMethod = BVHAccel::SplitMethod::EqualCounts;
     else {
-        Warning("BVH split method \"%s\" unknown.  Using \"sah\".",
-                splitMethodName.c_str());
+        throw std::runtime_error("Unknown BVH split method: " + splitMethodName);
+        // Warning("BVH split method \"%s\" unknown.  Using \"sah\".",
+        //         splitMethodName.c_str());
         splitMethod = BVHAccel::SplitMethod::SAH;
     }
 
-    int maxPrimsInNode = ps.FindOneInt("maxnodeprims", 4);
+    int maxPrimsInNode = 4; // ps.FindOneInt("maxnodeprims", 4); // TODO: Find proper default variable
     return std::make_shared<BVHAccel>(std::move(prims), maxPrimsInNode, splitMethod);
 }
 

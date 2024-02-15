@@ -42,14 +42,9 @@ Primitive::~Primitive() {}
 
 // GeometricPrimitive Method Definitions
 GeometricPrimitive::GeometricPrimitive(const std::shared_ptr<Shape> &shape,
-                                       const std::shared_ptr<Material> &material,
-                                       const std::shared_ptr<AreaLight> &areaLight,
                                        const MediumInterface &mediumInterface)
     : shape(shape),
-    material(material),
-    areaLight(areaLight),
     mediumInterface(mediumInterface) {
-    primitiveMemory += sizeof(*this);
 }
 
 Bounds3f GeometricPrimitive::WorldBound() const { return shape->WorldBound(); }
