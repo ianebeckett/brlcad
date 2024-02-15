@@ -32,19 +32,13 @@
 
 
 // accelerators/bvh.cpp*
-#include "accelerators/bvh.h"
+#include "bvh.h"
 #include "interaction.h"
 #include "paramset.h"
-#include "stats.h"
 #include "parallel.h"
 #include <algorithm>
 
 namespace pbrt {
-
-STAT_MEMORY_COUNTER("Memory/BVH tree", treeBytes);
-STAT_RATIO("BVH/Primitives per leaf node", totalPrimitives, totalLeafNodes);
-STAT_COUNTER("BVH/Interior nodes", interiorNodes);
-STAT_COUNTER("BVH/Leaf nodes", leafNodes);
 
 // BVHAccel Local Declarations
 struct BVHPrimitiveInfo {

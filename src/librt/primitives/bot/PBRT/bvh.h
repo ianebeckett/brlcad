@@ -52,7 +52,7 @@ struct MortonPrimitive;
 struct LinearBVHNode;
 
 // BVHAccel Declarations
-class BVHAccel : public Aggregate {
+class BVHAccel : public Primitive {
   public:
     // BVHAccel Public Types
     enum class SplitMethod { SAH, HLBVH, Middle, EqualCounts };

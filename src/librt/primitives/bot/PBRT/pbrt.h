@@ -90,6 +90,8 @@
 // Global Macros
 #define ALLOCA(TYPE, COUNT) (TYPE *) alloca((COUNT) * sizeof(TYPE))
 
+#define PBRT_CONSTEXPR constexpr
+
 namespace pbrt {
 
 // Global Forward Declarations
