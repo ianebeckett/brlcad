@@ -51,6 +51,7 @@
 /* private implementation headers */
 #include "./btg.h"	/* for the bottie_ functions */
 #include "./bot_edge.h"
+#include "nanort/nanort_interface.h" // C++ <-> C Interface header for NanoRT
 #include "../../librt_private.h"
 
 //adding time only for now, delete later******
@@ -460,12 +461,16 @@ rt_bot_prep(struct soltab *stp, struct rt_db_internal *ip, struct rt_i *rtip)
 
     rt_bot_mintie = RT_DEFAULT_MINTIE;
     const char *bmintie = getenv("LIBRT_BOT_MINTIE");
+    const char *bnanort = getenv("LIBRT_BOT_NANORT");
     if (bmintie)
 	rt_bot_mintie = atoi(bmintie);
 
     if (rt_bot_bbox(ip, &(stp->st_min), &(stp->st_max), &(rtip->rti_tol))) return 1;
 
-    if (rt_bot_mintie > 0 && bot_ip->num_faces >= rt_bot_mintie /* FIXME: (necessary?) && (bot_ip->face_normals != NULL || bot_ip->orientation != RT_BOT_UNORIENTED) */)
+    if ( bnanort != NULL ) {
+        ret = nanort_prep_double( stp, bot_ip, rtip );
+    }
+    else if (rt_bot_mintie > 0 && bot_ip->num_faces >= rt_bot_mintie /* FIXME: (necessary?) && (bot_ip->face_normals != NULL || bot_ip->orientation != RT_BOT_UNORIENTED) */)
 	ret = bottie_prep_double(stp, bot_ip, rtip);
     else if (bot_ip->bot_flags & RT_BOT_USE_FLOATS)
 	ret = bot_prep_float(stp, bot_ip, rtip);
