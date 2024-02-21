@@ -468,7 +468,7 @@ rt_bot_prep(struct soltab *stp, struct rt_db_internal *ip, struct rt_i *rtip)
     if (rt_bot_bbox(ip, &(stp->st_min), &(stp->st_max), &(rtip->rti_tol))) return 1;
 
     if ( bnanort != NULL ) {
-        ret = nanort_prep_double( stp, bot_ip, rtip );
+        ret = nanort_build_double( stp, bot_ip, rtip );
     }
     else if (rt_bot_mintie > 0 && bot_ip->num_faces >= rt_bot_mintie /* FIXME: (necessary?) && (bot_ip->face_normals != NULL || bot_ip->orientation != RT_BOT_UNORIENTED) */)
 	ret = bottie_prep_double(stp, bot_ip, rtip);
