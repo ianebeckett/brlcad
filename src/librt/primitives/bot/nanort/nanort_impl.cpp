@@ -2,9 +2,11 @@
 
 #include <bits/chrono.h>
 #include <chrono>
+#include <initializer_list>
 #include <iostream>
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
 
 #include "rt/primitives/bot.h"
 #include "rt/rt_instance.h"
@@ -33,6 +35,26 @@ extern "C" {
     return nanort_shot< double >( stp, rp, ap, seghead );
   }
   void nanort_free_double(void *vtie);
+}
+
+template< typename Float, typename ... Floats >
+Float ilist_func_apply( Float(*func)(std::initializer_list<Float>), Float f, Floats ... floats ) {
+  static_assert( sizeof...( Floats ) >= 1, "ilist_func_apply Can only be called with at least 2 arguments...");
+  std::initializer_list<Float> ilist = { std::decay_t<Float>(f), std::forward< Float >( floats ) ... };
+  return func( ilist );
+}
+
+/**
+ * @brief Max taking a variable number of floating-point arguments
+ */
+template< typename F, typename ... Float >
+F max( F f, Float ... floats ) {
+  return ilist_func_apply( std::max, f, floats ... );
+}
+
+template< typename F, typename ... Float >
+F min( F f, Float ... floats ) {
+  return ilist_func_apply( std::min, f, floats ... );
 }
 
 template< typename Float >
@@ -160,8 +182,15 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
     stp->st_center[i] =  (stp->st_max[i] - stp->st_min[i]) / (Float)2.f;
   }
   // TODO: How to calculate this?
-  stp->st_aradius = 2;
-  stp->st_bradius = 2;
+  // FIXME: Actually calculate. Currently just the max of the distances from the center...
+  auto radius = max( std::abs( stp->st_max[0] - stp->st_center[0] ),
+                                std::abs( stp->st_max[1] - stp->st_center[1] ),
+                                std::abs( stp->st_max[2] - stp->st_center[2] ),
+                                std::abs( stp->st_center[0] - stp->st_min[0] ),
+                                std::abs( stp->st_center[1] - stp->st_min[1] ),
+                                std::abs( stp->st_center[2] - stp->st_min[2] ) );
+  stp->st_aradius = radius;
+  stp->st_bradius = radius;
 
   return 0;
 }
@@ -171,6 +200,42 @@ int  nanort_shot(struct soltab *stp, struct xray *rp, struct application *ap, st
   struct bot_specific * bot = (bot_specific*)stp->st_specific;
   nanort::BVHAccel<Float> * accel = (nanort::BVHAccel<Float>*) bot->nanort;
 
+  struct bot_specific *bot;
+  struct tie_s *tie;
+  struct hitdata_s hitdata;
+  struct tie_id_s id;
+  struct tie_ray_s ray;
+  int i;
+  fastf_t dirlen;
+
+  bot = (struct bot_specific *)stp->st_specific;
+  tie = (struct tie_s *)bot->tie;
+
+  hitdata.nhits = 0;
+  hitdata.rp = &ap->a_ray;
+  /* do not need to init 'hits' and 'ts', tracked by 'nhits' */
+
+  /* small backout applied to ray origin */
+  dirlen = MAGSQ(rp->r_dir);
+  VSUB2(ray.pos, rp->r_pt, rp->r_dir);	/* step back one dirlen */
+  VMOVE(ray.dir, rp->r_dir);
+  ray.depth = ray.kdtree_depth = 0;
+
+  tie_work_double(tie, &ray, &id, hitfunc, &hitdata);
+
+  /* use hitfunc to build the hit list */
+  if (hitdata.nhits == 0)
+    return 0;
+
+  /* adjust hit distances to initial ray origin */
+  for (i = 0; i < hitdata.nhits; i++)
+    hitdata.hits[i].hit_dist = hitdata.hits[i].hit_dist - dirlen;
+
+  /* FIXME: we don't have the hit_surfno but at least initialize it */
+  for (i = 0; i < hitdata.nhits; i++)
+    hitdata.hits[i].hit_surfno = 0;
+
+  return rt_bot_makesegs(hitdata.hits, hitdata.nhits, stp, rp, ap, seghead, NULL);
 
 
   return -1;
