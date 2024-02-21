@@ -571,7 +571,10 @@ rt_bot_shot(struct soltab *stp, struct xray *rp, struct application *ap, struct 
     if (UNLIKELY(!bot))
 	return 0;
 
-    if (bot->tie != NULL) {
+    if( bot->nanort != NULL ) {
+        return nanort_shot_double( stp, rp, ap, seghead );
+    }
+    else if (bot->tie != NULL) {
 	return bottie_shot_double(stp, rp, ap, seghead);
     } else if (bot->bot_flags & RT_BOT_USE_FLOATS) {
 	return bot_shot_float(stp, rp, ap, seghead);

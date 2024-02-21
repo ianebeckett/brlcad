@@ -65,6 +65,7 @@ struct bot_specific {
     void **bot_facearray;       /* head of face array */
     size_t bot_tri_per_piece;   /* log # tri per piece. 1 << bot_ltpp is tri per piece */
     void *tie; /* FIXME: horrible blind cast, points to one in rt_bot_internal */
+    void *nanort;
 
 #ifdef USE_OPENCL
     struct clt_bot_specific clt_header;

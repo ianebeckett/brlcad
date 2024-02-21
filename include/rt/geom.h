@@ -827,6 +827,7 @@ struct rt_bot_internal
 				 * [num_uvs*3] */
 
     void *tie;	/* FIXME: blind casting. TIE needs to move from TIE_FUNC to XGLUE before this can not suck. */
+    void *nanort; /* FIXME: What they said ^^^ */
 };
 
 

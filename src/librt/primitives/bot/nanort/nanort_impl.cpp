@@ -3,12 +3,14 @@
 #include <bits/chrono.h>
 #include <chrono>
 #include <iostream>
+#include <stdexcept>
 #include <type_traits>
 
 #include "rt/primitives/bot.h"
 #include "rt/rt_instance.h"
 #include "rt/tie.h"
 #include "bio.h"
+#include "rt/geom.h"
 
 #include "nanort.h"
 #include "../../../librt_private.h"
@@ -27,7 +29,9 @@ extern "C" {
 
     return -1;
   }
-  int  nanort_shot_double(struct soltab *stp, struct xray *rp, struct application *ap, struct seg *seghead);
+  int  nanort_shot_double(struct soltab *stp, struct xray *rp, struct application *ap, struct seg *seghead) {
+    return nanort_shot< double >( stp, rp, ap, seghead );
+  }
   void nanort_free_double(void *vtie);
 }
 
@@ -48,6 +52,11 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
   bot->bot_mode = bot_ip->mode;
   bot->bot_orientation = bot_ip->orientation;
   bot->bot_flags = bot_ip->bot_flags;
+  bot_ip->nanort = bot->nanort = accel;
+  bot_ip->tie = NULL;
+  if( stp->st_meth->ft_shot != rt_bot_shot ) {
+    throw std::runtime_error("NanoRT ft_shot is not rt_bot_shot!");
+  }
   if (bot_ip->thickness) {
     bot->bot_thickness = (fastf_t *)bu_calloc(bot_ip->num_faces, sizeof(fastf_t), "bot_thickness");
     for (tri_index = 0; tri_index < bot_ip->num_faces; tri_index++)
@@ -86,10 +95,17 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
 
 
   std::cerr << "Building accelerator..." << std::endl;
+  std::cerr << bot_ip->num_faces * 3 << " triangles" << std::endl;
   auto start_time = std::chrono::system_clock::now().time_since_epoch();
   auto ret = accel->Build( bot_ip->num_faces, triangle_mesh, triangle_pred, build_options );
   auto end_time = std::chrono::system_clock::now().time_since_epoch() - start_time;
   std::cerr << "Accelerator built! Took " << std::chrono::duration_cast< std::chrono::milliseconds >( end_time ).count() << " ms " << std::endl;
+  nanort::BVHBuildStatistics stats = accel->GetStatistics();
+
+  printf("  BVH statistics:\n");
+  printf("    # of leaf   nodes: %d\n", stats.num_leaf_nodes);
+  printf("    # of branch nodes: %d\n", stats.num_branch_nodes);
+  printf("  Max tree depth     : %d\n", stats.max_tree_depth);
   // Allocate triangles and buffer space...
 
   // tie = (struct tie_s *)bottie_allocn_double(bot_ip->num_faces);
@@ -131,15 +147,31 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
   // // Perform KD tree build
   // tie_prep_double((struct tie_s *)bot->tie);
 
-  VMOVE(stp->st_min, tie->amin);
-  VMOVE(stp->st_max, tie->amax);
+  // Set the min and max bounding boxes.
+  accel->BoundingBox( stp->st_min, stp->st_max );
+  // VMOVE(stp->st_min, tie->amin);
+  // VMOVE(stp->st_max, tie->amax);
 
   /* zero thickness will get missed by the raytracer */
   BBOX_NONDEGEN(stp->st_min, stp->st_max, rtip->rti_tol.dist);
 
-  VMOVE(stp->st_center, tie->mid);
-  stp->st_aradius = tie->radius;
-  stp->st_bradius = tie->radius;
+  // VMOVE(stp->st_center, tie->mid);
+  for( int i = 0; i < 3; i++ ) {
+    stp->st_center[i] =  (stp->st_max[i] - stp->st_min[i]) / (Float)2.f;
+  }
+  // TODO: How to calculate this?
+  stp->st_aradius = 2;
+  stp->st_bradius = 2;
 
   return 0;
+}
+
+template< typename Float >
+int  nanort_shot(struct soltab *stp, struct xray *rp, struct application *ap, struct seg *seghead) {
+  struct bot_specific * bot = (bot_specific*)stp->st_specific;
+  nanort::BVHAccel<Float> * accel = (nanort::BVHAccel<Float>*) bot->nanort;
+
+
+
+  return -1;
 }
