@@ -1,9 +1,10 @@
-#include "nanort_impl.hpp"
+#include "nanort_impl.h"
 
 #include <bits/chrono.h>
 #include <chrono>
 #include <initializer_list>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -57,6 +58,11 @@ F min( F f, Float ... floats ) {
   return ilist_func_apply( std::min, f, floats ... );
 }
 
+/**
+ * @brief Implementation of NanoRT BVH Building
+ *
+ * Based on (read: copied from) bottie_prep and tie_prep
+ */
 template< typename Float >
 int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *rtip ) {
   struct tie_s *tie;
@@ -92,7 +98,11 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
   } else {
     bot->bot_facemode = BU_BITV_NULL;
   }
-  bot->bot_facelist = NULL;
+
+
+  bot->bot_facelist = bot_ip->faces;
+  bot->bot_facearray = (void**)bot_ip->vertices;
+  bot->bot_ntri = bot_ip->num_faces * 3;
 
   std::cerr << "Building triangle mesh and pred..." << std::endl;
   static_assert( std::is_same_v< Float, std::decay_t<decltype(*bot_ip->vertices)>>, "Invalid floating point type!" );
@@ -112,8 +122,10 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
 
   std::cerr << "Memcpy done..." << std::endl;
 
-  nanort::TriangleMesh<Float> triangle_mesh( tri_vert, tri_faces, sizeof(Float)*3 );
-  nanort::TriangleSAHPred<Float> triangle_pred( tri_vert, tri_faces, sizeof(Float)*3 );
+  // nanort::TriangleMesh<Float> triangle_mesh( tri_vert, tri_faces, sizeof(Float)*3 );
+  // nanort::TriangleSAHPred<Float> triangle_pred( tri_vert, tri_faces, sizeof(Float)*3 );
+  nanort::TriangleMesh<Float> triangle_mesh( bot_ip->vertices, (const unsigned *) bot_ip->faces, sizeof(Float)*3 );
+  nanort::TriangleSAHPred<Float> triangle_pred( bot_ip->vertices, (const unsigned *) bot_ip->faces, sizeof(Float)*3 );
 
 
   std::cerr << "Building accelerator..." << std::endl;
@@ -128,46 +140,6 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
   printf("    # of leaf   nodes: %d\n", stats.num_leaf_nodes);
   printf("    # of branch nodes: %d\n", stats.num_branch_nodes);
   printf("  Max tree depth     : %d\n", stats.max_tree_depth);
-  // Allocate triangles and buffer space...
-
-  // tie = (struct tie_s *)bottie_allocn_double(bot_ip->num_faces);
-  // if (tie != NULL) {
-  //   bot_ip->tie = bot->tie = tie;
-  // } else {
-  //   return -1;
-  // }
-
-  // if ((tribuf = (TIE_3 *)bu_malloc(sizeof(TIE_3) * 3 * bot_ip->num_faces, "triangle tribuffer")) == NULL) {
-  //   tie_free_double(tie);
-  //   return -1;
-  // }
-  // if ((tribufp = (TIE_3 **)bu_malloc(sizeof(TIE_3*) * 3 * bot_ip->num_faces, "triangle tribuffer pointer")) == NULL) {
-  //   tie_free_double(tie);
-  //   bu_free(tribuf, "tribuf");
-  //   return -1;
-  // }
-
-  // Copy data around
-  // for (i = 0; i < bot_ip->num_faces*3; i++) {
-  //   tribufp[i] = &tribuf[i];
-  //   VMOVE(tribuf[i].v, (bot_ip->vertices+3*bot_ip->faces[i]));
-  // }
-
-
-  /* tie_pushX sig: (struct tie_s *,
-   *                 TIE_3 **,
-   *                 unsigned int,
-   *                 void *,
-   *                 unsigned int);
-   */
-  // Add to KD tree
-  // tie_push_double((struct tie_s *)bot_ip->tie, tribufp, bot_ip->num_faces, bot, 0);
-
-  // bu_free(tribuf, "tribuffer");
-  // bu_free(tribufp, "tribufp");
-
-  // // Perform KD tree build
-  // tie_prep_double((struct tie_s *)bot->tie);
 
   // Set the min and max bounding boxes.
   accel->BoundingBox( stp->st_min, stp->st_max );
@@ -178,6 +150,7 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
   BBOX_NONDEGEN(stp->st_min, stp->st_max, rtip->rti_tol.dist);
 
   // VMOVE(stp->st_center, tie->mid);
+  // Calculate center of bounding box
   for( int i = 0; i < 3; i++ ) {
     stp->st_center[i] =  (stp->st_max[i] - stp->st_min[i]) / (Float)2.f;
   }
@@ -195,14 +168,21 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
   return 0;
 }
 
+static void *
+hitfunc(struct tie_ray_s *ray, struct tie_id_s *id, struct tie_tri_s *UNUSED(tri), void *ptr) {
+
+  return nullptr;
+}
+
 template< typename Float >
 int  nanort_shot(struct soltab *stp, struct xray *rp, struct application *ap, struct seg *seghead) {
   struct bot_specific * bot = (bot_specific*)stp->st_specific;
   nanort::BVHAccel<Float> * accel = (nanort::BVHAccel<Float>*) bot->nanort;
 
-  struct bot_specific *bot;
+  // printf("Performing NanoRT shot!\n");
+
   struct tie_s *tie;
-  struct hitdata_s hitdata;
+  // struct hitdata_s hitdata;
   struct tie_id_s id;
   struct tie_ray_s ray;
   int i;
@@ -211,8 +191,8 @@ int  nanort_shot(struct soltab *stp, struct xray *rp, struct application *ap, st
   bot = (struct bot_specific *)stp->st_specific;
   tie = (struct tie_s *)bot->tie;
 
-  hitdata.nhits = 0;
-  hitdata.rp = &ap->a_ray;
+  // hitdata.nhits = 0;
+  // hitdata.rp = &ap->a_ray;
   /* do not need to init 'hits' and 'ts', tracked by 'nhits' */
 
   /* small backout applied to ray origin */
@@ -221,21 +201,37 @@ int  nanort_shot(struct soltab *stp, struct xray *rp, struct application *ap, st
   VMOVE(ray.dir, rp->r_dir);
   ray.depth = ray.kdtree_depth = 0;
 
-  tie_work_double(tie, &ray, &id, hitfunc, &hitdata);
 
-  /* use hitfunc to build the hit list */
-  if (hitdata.nhits == 0)
-    return 0;
+  nanort::TriangleIntersector< Float, nanort::TriangleIntersection< Float > > intersector( (Float*)bot->bot_facearray, (const unsigned*)bot->bot_facelist, sizeof(Float)*3 );
 
-  /* adjust hit distances to initial ray origin */
-  for (i = 0; i < hitdata.nhits; i++)
-    hitdata.hits[i].hit_dist = hitdata.hits[i].hit_dist - dirlen;
+  // Single-point intersection
+  nanort::TriangleIntersection<Float> isect;
+  nanort::Ray<Float> nrt_ray( ray.pos, ray.dir, 0, std::numeric_limits<Float>::max() );
+  bool hit = accel->Traverse( nrt_ray, intersector, &isect );
 
-  /* FIXME: we don't have the hit_surfno but at least initialize it */
-  for (i = 0; i < hitdata.nhits; i++)
-    hitdata.hits[i].hit_surfno = 0;
+  if( hit ) {
+    printf("Ray hit @ t = %f\n", isect.t);
+  }
 
-  return rt_bot_makesegs(hitdata.hits, hitdata.nhits, stp, rp, ap, seghead, NULL);
+  // bool hit = accel->Traverse(
+
+  // tie_work_double(tie, &ray, &id, hitfunc, &hitdata);
+
+  // /* use hitfunc to build the hit list */
+  // if (hitdata.nhits == 0)
+  //   return 0;
+
+  // /* adjust hit distances to initial ray origin */
+  // for (i = 0; i < hitdata.nhits; i++)
+  //   hitdata.hits[i].hit_dist = hitdata.hits[i].hit_dist - dirlen;
+
+  // /* FIXME: we don't have the hit_surfno but at least initialize it */
+  // for (i = 0; i < hitdata.nhits; i++)
+  //   hitdata.hits[i].hit_surfno = 0;
+
+  // return rt_bot_makesegs(hitdata.hits, hitdata.nhits, stp, rp, ap, seghead, NULL);
+  return 0;
+  return rt_bot_makesegs(0, 0, stp, rp, ap, seghead, NULL);
 
 
   return -1;

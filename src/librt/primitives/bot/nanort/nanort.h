@@ -473,26 +473,39 @@ inline const real *get_vertex_addr(const real *p, const size_t idx,
       reinterpret_cast<const unsigned char *>(p) + idx * stride_bytes);
 }
 
+template< class Internal >
+class IRay : public Internal {
+
+};
+
 template <typename T = float>
 class Ray {
+ private:
+  T * _org;//[3];           // must set
+  T * _dir;//[3];           // must set
+  T _min_t;            // minimum ray hit distance.
+  T _max_t;            // maximum ray hit distance.
+  unsigned int _type;  // ray type
  public:
-  Ray()
-      : min_t(static_cast<T>(0.0)),
-        max_t(std::numeric_limits<T>::max()),
-        type(RAY_TYPE_NONE) {
-    org[0] = static_cast<T>(0.0);
-    org[1] = static_cast<T>(0.0);
-    org[2] = static_cast<T>(0.0);
-    dir[0] = static_cast<T>(0.0);
-    dir[1] = static_cast<T>(0.0);
-    dir[2] = static_cast<T>(-1.0);
+  Ray( T* o, T * d, T min, T max )
+  : _org(o), _dir(d), _min_t(min), _max_t(max), _type( RAY_TYPE_PRIMARY ) {
   }
+  //Ray()
+  //    : _min_t(static_cast<T>(0.0)),
+  //      _max_t(std::numeric_limits<T>::max()),
+  //      _type(RAY_TYPE_NONE) {
+  //  _org[0] = static_cast<T>(0.0);
+  //  _org[1] = static_cast<T>(0.0);
+  //  _org[2] = static_cast<T>(0.0);
+  //  _dir[0] = static_cast<T>(0.0);
+  //  _dir[1] = static_cast<T>(0.0);
+  //  _dir[2] = static_cast<T>(-1.0);
+  //}
 
-  T org[3];           // must set
-  T dir[3];           // must set
-  T min_t;            // minimum ray hit distance.
-  T max_t;            // maximum ray hit distance.
-  unsigned int type;  // ray type
+ T* org() { return _org; }
+ T* dir() { return _dir; }
+ T& min_t() { return _min_t; }
+ T& max_t() { return _max_t; }
 
   // TODO(LTE): Align sizeof(Ray)
 };
@@ -1164,20 +1177,20 @@ class TriangleIntersector {
   /// This function is called only once in BVH traversal.
   void PrepareTraversal(const Ray<T> &ray,
                         const BVHTraceOptions &trace_options) const {
-    ray_org_[0] = ray.org[0];
-    ray_org_[1] = ray.org[1];
-    ray_org_[2] = ray.org[2];
+    ray_org_[0] = ray.org()[0];
+    ray_org_[1] = ray.org()[1];
+    ray_org_[2] = ray.org()[2];
 
     // Calculate dimension where the ray direction is maximal.
     ray_coeff_.kz = 0;
-    T absDir = std::fabs(ray.dir[0]);
-    if (absDir < std::fabs(ray.dir[1])) {
+    T absDir = std::fabs(ray.dir()[0]);
+    if (absDir < std::fabs(ray.dir()[1])) {
       ray_coeff_.kz = 1;
-      absDir = std::fabs(ray.dir[1]);
+      absDir = std::fabs(ray.dir()[1]);
     }
-    if (absDir < std::fabs(ray.dir[2])) {
+    if (absDir < std::fabs(ray.dir()[2])) {
       ray_coeff_.kz = 2;
-      absDir = std::fabs(ray.dir[2]);
+      absDir = std::fabs(ray.dir()[2]);
     }
 
     ray_coeff_.kx = ray_coeff_.kz + 1;
@@ -1186,17 +1199,17 @@ class TriangleIntersector {
     if (ray_coeff_.ky == 3) ray_coeff_.ky = 0;
 
     // Swap kx and ky dimension to preserve winding direction of triangles.
-    if (ray.dir[ray_coeff_.kz] < static_cast<T>(0.0))
+    if (ray.dir()[ray_coeff_.kz] < static_cast<T>(0.0))
       std::swap(ray_coeff_.kx, ray_coeff_.ky);
 
     // Calculate shear constants.
-    ray_coeff_.Sx = ray.dir[ray_coeff_.kx] / ray.dir[ray_coeff_.kz];
-    ray_coeff_.Sy = ray.dir[ray_coeff_.ky] / ray.dir[ray_coeff_.kz];
-    ray_coeff_.Sz = static_cast<T>(1.0) / ray.dir[ray_coeff_.kz];
+    ray_coeff_.Sx = ray.dir()[ray_coeff_.kx] / ray.dir()[ray_coeff_.kz];
+    ray_coeff_.Sy = ray.dir()[ray_coeff_.ky] / ray.dir()[ray_coeff_.kz];
+    ray_coeff_.Sz = static_cast<T>(1.0) / ray.dir()[ray_coeff_.kz];
 
     trace_options_ = trace_options;
 
-    t_min_ = ray.min_t;
+    t_min_ = ray.min_t();
 
     u_ = static_cast<T>(0.0);
     v_ = static_cast<T>(0.0);
@@ -2383,14 +2396,14 @@ inline bool BVHAccel<T>::TestLeafNode(const BVHNode<T> &node, const Ray<T> &ray,
   T t = intersector.GetT();  // current hit distance
 
   real3<T> ray_org;
-  ray_org[0] = ray.org[0];
-  ray_org[1] = ray.org[1];
-  ray_org[2] = ray.org[2];
+  ray_org[0] = ray.org()[0];
+  ray_org[1] = ray.org()[1];
+  ray_org[2] = ray.org()[2];
 
   real3<T> ray_dir;
-  ray_dir[0] = ray.dir[0];
-  ray_dir[1] = ray.dir[1];
-  ray_dir[2] = ray.dir[2];
+  ray_dir[0] = ray.dir()[0];
+  ray_dir[1] = ray.dir()[1];
+  ray_dir[2] = ray.dir()[2];
 
   for (unsigned int i = 0; i < num_primitives; i++) {
     unsigned int prim_idx = indices_[i + offset];
@@ -2427,14 +2440,14 @@ bool BVHAccel<T>::MultiHitTestLeafNode(
   }
 
   real3<T> ray_org;
-  ray_org[0] = ray.org[0];
-  ray_org[1] = ray.org[1];
-  ray_org[2] = ray.org[2];
+  ray_org[0] = ray.org()[0];
+  ray_org[1] = ray.org()[1];
+  ray_org[2] = ray.org()[2];
 
   real3<T> ray_dir;
-  ray_dir[0] = ray.dir[0];
-  ray_dir[1] = ray.dir[1];
-  ray_dir[2] = ray.dir[2];
+  ray_dir[0] = ray.dir()[0];
+  ray_dir[1] = ray.dir()[1];
+  ray_dir[2] = ray.dir()[2];
 
   for (unsigned int i = 0; i < num_primitives; i++) {
     unsigned int prim_idx = indices_[i + offset];
@@ -2444,7 +2457,7 @@ bool BVHAccel<T>::MultiHitTestLeafNode(
     if (intersector.Intersect(&local_t, &u, &v, prim_idx))
     {
       // Update isect state
-      if ((local_t > ray.min_t))
+      if ((local_t > ray.min_t()))
       {
         if (isect_pq->size() < static_cast<size_t>(max_intersections))
         {
@@ -2457,7 +2470,7 @@ bool BVHAccel<T>::MultiHitTestLeafNode(
           isect_pq->push(isect);
 
           // Update t to furthest distance.
-          t = ray.max_t;
+          t = ray.max_t();
 
           hit = true;
         }
@@ -2493,7 +2506,7 @@ bool BVHAccel<T>::Traverse(const Ray<T> &ray, const I &intersector, H *isect,
   const int kMaxStackDepth = 512;
   (void)kMaxStackDepth;
 
-  T hit_t = ray.max_t;
+  T hit_t = ray.max_t();
 
   int node_stack_index = 0;
   unsigned int node_stack[512];
@@ -2505,22 +2518,22 @@ bool BVHAccel<T>::Traverse(const Ray<T> &ray, const I &intersector, H *isect,
   intersector.PrepareTraversal(ray, options);
 
   int dir_sign[3];
-  dir_sign[0] = ray.dir[0] < static_cast<T>(0.0) ? 1 : 0;
-  dir_sign[1] = ray.dir[1] < static_cast<T>(0.0) ? 1 : 0;
-  dir_sign[2] = ray.dir[2] < static_cast<T>(0.0) ? 1 : 0;
+  dir_sign[0] = ray.dir()[0] < static_cast<T>(0.0) ? 1 : 0;
+  dir_sign[1] = ray.dir()[1] < static_cast<T>(0.0) ? 1 : 0;
+  dir_sign[2] = ray.dir()[2] < static_cast<T>(0.0) ? 1 : 0;
 
   real3<T> ray_inv_dir;
   real3<T> ray_dir;
-  ray_dir[0] = ray.dir[0];
-  ray_dir[1] = ray.dir[1];
-  ray_dir[2] = ray.dir[2];
+  ray_dir[0] = ray.dir()[0];
+  ray_dir[1] = ray.dir()[1];
+  ray_dir[2] = ray.dir()[2];
 
   ray_inv_dir = vsafe_inverse(ray_dir);
 
   real3<T> ray_org;
-  ray_org[0] = ray.org[0];
-  ray_org[1] = ray.org[1];
-  ray_org[2] = ray.org[2];
+  ray_org[0] = ray.org()[0];
+  ray_org[1] = ray.org()[1];
+  ray_org[2] = ray.org()[2];
 
   T min_t = std::numeric_limits<T>::max();
   T max_t = -std::numeric_limits<T>::max();
@@ -2531,7 +2544,7 @@ bool BVHAccel<T>::Traverse(const Ray<T> &ray, const I &intersector, H *isect,
 
     node_stack_index--;
 
-    bool hit = IntersectRayAABB(&min_t, &max_t, ray.min_t, hit_t, node.bmin,
+    bool hit = IntersectRayAABB(&min_t, &max_t, ray.min_t(), hit_t, node.bmin,
                                 node.bmax, ray_org, ray_inv_dir, dir_sign);
 
     if (hit) {
@@ -2551,7 +2564,7 @@ bool BVHAccel<T>::Traverse(const Ray<T> &ray, const I &intersector, H *isect,
 
   assert(node_stack_index < kNANORT_MAX_STACK_DEPTH);
 
-  bool hit = (intersector.GetT() < ray.max_t);
+  bool hit = (intersector.GetT() < ray.max_t());
   intersector.PostTraversal(ray, hit, isect);
 
   return hit;
@@ -2570,14 +2583,14 @@ inline bool BVHAccel<T>::TestLeafNodeIntersections(
   unsigned int offset = node.data[1];
 
   real3<T> ray_org;
-  ray_org[0] = ray.org[0];
-  ray_org[1] = ray.org[1];
-  ray_org[2] = ray.org[2];
+  ray_org[0] = ray.org()[0];
+  ray_org[1] = ray.org()[1];
+  ray_org[2] = ray.org()[2];
 
   real3<T> ray_dir;
-  ray_dir[0] = ray.dir[0];
-  ray_dir[1] = ray.dir[1];
-  ray_dir[2] = ray.dir[2];
+  ray_dir[0] = ray.dir()[0];
+  ray_dir[1] = ray.dir()[1];
+  ray_dir[2] = ray.dir()[2];
 
   intersector.PrepareTraversal(ray);
 
@@ -2614,7 +2627,7 @@ bool BVHAccel<T>::ListNodeIntersections(
     StackVector<NodeHit<T>, 128> *hits) const {
   const int kMaxStackDepth = 512;
 
-  T hit_t = ray.max_t;
+  T hit_t = ray.max_t();
 
   int node_stack_index = 0;
   unsigned int node_stack[512];
@@ -2628,23 +2641,23 @@ bool BVHAccel<T>::ListNodeIntersections(
   (*hits)->clear();
 
   int dir_sign[3];
-  dir_sign[0] = ray.dir[0] < static_cast<T>(0.0) ? 1 : 0;
-  dir_sign[1] = ray.dir[1] < static_cast<T>(0.0) ? 1 : 0;
-  dir_sign[2] = ray.dir[2] < static_cast<T>(0.0) ? 1 : 0;
+  dir_sign[0] = ray.dir()[0] < static_cast<T>(0.0) ? 1 : 0;
+  dir_sign[1] = ray.dir()[1] < static_cast<T>(0.0) ? 1 : 0;
+  dir_sign[2] = ray.dir()[2] < static_cast<T>(0.0) ? 1 : 0;
 
   real3<T> ray_inv_dir;
   real3<T> ray_dir;
 
-  ray_dir[0] = ray.dir[0];
-  ray_dir[1] = ray.dir[1];
-  ray_dir[2] = ray.dir[2];
+  ray_dir[0] = ray.dir()[0];
+  ray_dir[1] = ray.dir()[1];
+  ray_dir[2] = ray.dir()[2];
 
   ray_inv_dir = vsafe_inverse(ray_dir);
 
   real3<T> ray_org;
-  ray_org[0] = ray.org[0];
-  ray_org[1] = ray.org[1];
-  ray_org[2] = ray.org[2];
+  ray_org[0] = ray.org()[0];
+  ray_org[1] = ray.org()[1];
+  ray_org[2] = ray.org()[2];
 
   T min_t, max_t;
 
@@ -2654,7 +2667,7 @@ bool BVHAccel<T>::ListNodeIntersections(
 
     node_stack_index--;
 
-    bool hit = IntersectRayAABB(&min_t, &max_t, ray.min_t, hit_t, node.bmin,
+    bool hit = IntersectRayAABB(&min_t, &max_t, ray.min_t(), hit_t, node.bmin,
                                 node.bmax, ray_org, ray_inv_dir, dir_sign);
 
     if (hit) {
@@ -2702,7 +2715,7 @@ bool BVHAccel<T>::MultiHitTraverse(const Ray<T> &ray,
                                          const BVHTraceOptions& options) const {
   const int kMaxStackDepth = 512;
 
-  T hit_t = ray.max_t;
+  T hit_t = ray.max_t();
 
   int node_stack_index = 0;
   unsigned int node_stack[512];
@@ -2719,23 +2732,23 @@ bool BVHAccel<T>::MultiHitTraverse(const Ray<T> &ray,
   intersector.PrepareTraversal(ray, options);
 
   int dir_sign[3];
-  dir_sign[0] = ray.dir[0] < static_cast<T>(0.0) ? static_cast<T>(1) : static_cast<T>(0);
-  dir_sign[1] = ray.dir[1] < static_cast<T>(0.0) ? static_cast<T>(1) : static_cast<T>(0);
-  dir_sign[2] = ray.dir[2] < static_cast<T>(0.0) ? static_cast<T>(1) : static_cast<T>(0);
+  dir_sign[0] = ray.dir()[0] < static_cast<T>(0.0) ? static_cast<T>(1) : static_cast<T>(0);
+  dir_sign[1] = ray.dir()[1] < static_cast<T>(0.0) ? static_cast<T>(1) : static_cast<T>(0);
+  dir_sign[2] = ray.dir()[2] < static_cast<T>(0.0) ? static_cast<T>(1) : static_cast<T>(0);
 
   real3<T> ray_inv_dir;
   real3<T> ray_dir;
 
-  ray_dir[0] = ray.dir[0];
-  ray_dir[1] = ray.dir[1];
-  ray_dir[2] = ray.dir[2];
+  ray_dir[0] = ray.dir()[0];
+  ray_dir[1] = ray.dir()[1];
+  ray_dir[2] = ray.dir()[2];
 
   ray_inv_dir = vsafe_inverse(ray_dir);
 
   real3<T> ray_org;
-  ray_org[0] = ray.org[0];
-  ray_org[1] = ray.org[1];
-  ray_org[2] = ray.org[2];
+  ray_org[0] = ray.org()[0];
+  ray_org[1] = ray.org()[1];
+  ray_org[2] = ray.org()[2];
 
   T min_t, max_t;
 
@@ -2746,7 +2759,7 @@ bool BVHAccel<T>::MultiHitTraverse(const Ray<T> &ray,
 
     node_stack_index--;
 
-    bool hit = IntersectRayAABB(&min_t, &max_t, ray.min_t, hit_t, node.bmin,
+    bool hit = IntersectRayAABB(&min_t, &max_t, ray.min_t(), hit_t, node.bmin,
                                 node.bmax, ray_org, ray_inv_dir, dir_sign);
 
     // branch node

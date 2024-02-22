@@ -51,7 +51,7 @@
 /* private implementation headers */
 #include "./btg.h"	/* for the bottie_ functions */
 #include "./bot_edge.h"
-#include "nanort/nanort_interface.h" // C++ <-> C Interface header for NanoRT
+#include "nanort/nanort_impl.h" // C++ <-> C Interface header for NanoRT
 #include "../../librt_private.h"
 
 //adding time only for now, delete later******
