@@ -104,6 +104,7 @@ set(LIBRT_SOURCES
   primitives/bot/bot_mirror.c
   primitives/bot/bot_oriented_bbox.cpp
   primitives/bot/btg.c
+  primitives/bot/bvh.c
   primitives/bot/btgf.c
   primitives/bot/decimate.c
   primitives/brep/brep.cpp
