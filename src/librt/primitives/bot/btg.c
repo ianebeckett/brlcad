@@ -38,6 +38,7 @@
 #include "btg.h"
 #include "../../librt_private.h"
 
+#include "bvh.h"
 #include "tie.c"
 #include "tie_kdtree.c"
 
@@ -121,12 +122,13 @@ bottie_prep_double(struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt
      *                 void *,
      *                 unsigned int);
      */
-    tie_push_double((struct tie_s *)bot_ip->tie, tribufp, bot_ip->num_faces, bot, 0);
+    // tie_push_double((struct tie_s *)bot_ip->tie, tribufp, bot_ip->num_faces, bot, 0);
+    bottie_prep_bvh(tribuf, bot_ip->num_faces, bot_ip->tie, sizeof(bot_ip->tie));
 
     bu_free(tribuf, "tribuffer");
     bu_free(tribufp, "tribufp");
 
-    tie_prep_double((struct tie_s *)bot->tie);
+    // tie_prep_double((struct tie_s *)bot->tie);
 
     VMOVE(stp->st_min, tie->amin);
     VMOVE(stp->st_max, tie->amax);
@@ -220,8 +222,9 @@ bottie_shot_double(struct soltab *stp, struct xray *rp, struct application *ap, 
     VMOVE(ray.dir, rp->r_dir);
     ray.depth = ray.kdtree_depth = 0;
 
-    tie_work_double(tie, &ray, &id, hitfunc, &hitdata);
-
+    // tie_work_double(tie, &ray, &id, hitfunc, &hitdata);
+    bottie_shot_bvh(tie, &ray, hitfunc, &hitdata);
+	
     /* use hitfunc to build the hit list */
     if (hitdata.nhits == 0)
 	return 0;
@@ -240,7 +243,8 @@ bottie_shot_double(struct soltab *stp, struct xray *rp, struct application *ap, 
 void
 bottie_free_double(void *vtie)
 {
-    tie_free_double((struct tie_s *)vtie);
+    // tie_free_double((struct tie_s *)vtie);
+    bottie_free_bvh((struct tie_s *)vtie);
 }
 
 /*
