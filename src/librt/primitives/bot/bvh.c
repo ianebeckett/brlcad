@@ -112,7 +112,7 @@ void BuildBounds(triangle* trip, int trip_size, bvh_node* bounds_arr, int bounds
     
     int next_dim = (cur_dim + 1) %3;
     
-    BuildBounds(trip                , trip_size /2            , bounds_arr, bounds_size, offset_c1, next_dim);
+    BuildBounds(trip               , trip_size /2           , bounds_arr, bounds_size, offset_c1, next_dim);
     BuildBounds(trip + trip_size /2, trip_size - trip_size/2, bounds_arr, bounds_size, offset_c2, next_dim);
     //we do the subtraction so we don't have to care if trip_size is a multiple of 2.
 }
@@ -121,7 +121,7 @@ int bottie_prep_bvh(TIE_3* tri_arr, int num_tris, void* persistant_storage, int 
     // We want to eventually convert this to a index into the triangle array
     // because that (u32) will take less space than a 64bit pointer
     BU_ASSERT(num_tris < (uint64_t)1 << 32);
-    BU_ASSERT(num_tris > refs_that_fit_in_bounding_box *2);
+    BU_ASSERT(num_tris > refs_that_fit_in_bounding_box);
     int num_leaf_nodes = num_tris / refs_that_fit_in_bounding_box;
     if (num_tris % refs_that_fit_in_bounding_box) {
 	num_leaf_nodes += 1;
@@ -133,8 +133,6 @@ int bottie_prep_bvh(TIE_3* tri_arr, int num_tris, void* persistant_storage, int 
 	num_nodes += add;
     }
     int bounds_size = 1 << log_count;
-    //m->bounds_size = bounds_size;
-    //m->bounds = new BBnode[bounds_size];
     bu_log("Allocate %d nodes.\n", bounds_size);
     bvh_node* bounds = bu_calloc(bounds_size, sizeof(bvh_node), "BVH node preallocated arena, heap ordering");
     triangle* tris = bu_malloc(num_tris * sizeof(triangle), "Triangle Buffer for BVH");
@@ -185,6 +183,7 @@ void intersect_triangle(triangle* tri,
     TFLOAT alpha = 1 - beta - gamma;
     TFLOAT dist = VDOT(S2.v, E2.v) / denom;
     VCROSS(norm.v, E1.v, E2.v); 
+    VUNITIZE(norm.v);
     struct tie_id_s id;
     id.dist = dist;
     VMOVE(id.norm, norm.v);
@@ -212,11 +211,13 @@ bool intersect_bbox(bounding_box bbox, struct tie_ray_s* ray) {
     TIE_3 low_ts;
     TIE_3 high_ts;
     
-    // VSETALL( low_ts.v,  INFINITY);
-    // VSETALL(high_ts.v, -INFINITY);
+#if 0 // both of these do the same thing
+    VSETALL( low_ts.v,  INFINITY);
+    VSETALL(high_ts.v, -INFINITY);
     
-    // VMINMAX(low_ts.v, high_ts.v,  lows_t.v);
-    // VMINMAX(low_ts.v, high_ts.v, highs_t.v);
+    VMINMAX(low_ts.v, high_ts.v,  lows_t.v);
+    VMINMAX(low_ts.v, high_ts.v, highs_t.v);
+#else
      low_ts.v[0] = MIN(lows_t.v[0], highs_t.v[0]);
      low_ts.v[1] = MIN(lows_t.v[1], highs_t.v[1]);
      low_ts.v[2] = MIN(lows_t.v[2], highs_t.v[2]);
@@ -224,6 +225,7 @@ bool intersect_bbox(bounding_box bbox, struct tie_ray_s* ray) {
     high_ts.v[0] = MAX(lows_t.v[0], highs_t.v[0]);
     high_ts.v[1] = MAX(lows_t.v[1], highs_t.v[1]);
     high_ts.v[2] = MAX(lows_t.v[2], highs_t.v[2]);
+#endif // both of these do the same thing
     
     TFLOAT high_t = minimum(high_ts);
     TFLOAT low_t  = maximum(low_ts);
@@ -241,6 +243,19 @@ void recursive_bvh_intersect(bvh_node* bounds,
 	if (intersect_bbox(bounds[offset].data.bbox, ray)) {
 	    recursive_bvh_intersect(bounds, offset*2 +1, ray, hitdata, hitfunc);
 	    recursive_bvh_intersect(bounds, offset*2 +2, ray, hitdata, hitfunc);
+	} else {
+	    // printf("Branch Truncated: 0");
+	    // int offsets[16] = {0};
+	    // int depth = 0;
+	    // while (offset > 0) {
+		// offsets[depth] = offset;
+		// offset = (offset-1) / 2;
+		// depth += 1;
+	    // }
+	    // for (int i = depth-1; i >= 0; i--) {
+		// printf("-%d", offsets[i]);
+	    // }
+	    // printf("\n");
 	}
     } else {
 	for (int i = 0; i < refs_that_fit_in_bounding_box; i++) {
