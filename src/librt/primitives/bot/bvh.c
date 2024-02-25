@@ -80,6 +80,7 @@ void BuildBounds(triangle* trip, int trip_size, bvh_node* bounds_arr, int bounds
 	}
 	return;
     }
+    // FIXME: 
     // This is currently an insertion sort, because that was simple
     // However we want to convert this to a qsort pivot around the 
     // average, which we can calculate while we're checking the 
@@ -174,6 +175,7 @@ void intersect_triangle(triangle* tri,
     VCROSS(S1.v,ray->dir, E2.v);
     TFLOAT denom = VDOT(S1.v, E1.v);
     TFLOAT beta = VDOT(S1.v, S.v) / denom;
+    // FIXME: Move early out beta into early out gamma
     //early out beta
     if ((beta < 0.0f) | (beta > 1.0f)) { return;}
     VCROSS(S2.v, S.v, E1.v);
