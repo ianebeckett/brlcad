@@ -228,7 +228,25 @@ bottie_shot_double(struct soltab *stp, struct xray *rp, struct application *ap, 
     /* use hitfunc to build the hit list */
     if (hitdata.nhits == 0)
 	return 0;
-
+    
+    /* sort the hits - insertion sort*/
+    // We do not sort the tri_specific array because that is 
+    // accessed through the pointer hit->hit_private. If we did sort
+    // those, we would have to fix up those pointers.
+    for (i = 1; i < hitdata.nhits; i++) {
+	float i_hit_dist = hitdata.hits[i].hit_dist;
+	struct hit swap = hitdata.hits[i];
+	int j;
+	for (j = i-1; j >= 0; j--) {
+	    float j_hit_dist = hitdata.hits[j].hit_dist;
+	    if (j_hit_dist < i_hit_dist) {
+		break;
+	    }
+	    hitdata.hits[j+1] = hitdata.hits[j];
+	}
+	hitdata.hits[j+1] = swap;
+    }
+    
     /* adjust hit distances to initial ray origin */
     for (i = 0; i < hitdata.nhits; i++)
 	hitdata.hits[i].hit_dist = hitdata.hits[i].hit_dist - dirlen;
