@@ -502,6 +502,10 @@ class Ray {
   //  _dir[2] = static_cast<T>(-1.0);
   //}
 
+ T const* org() const { return _org; }
+ T const* dir() const { return _dir; }
+ T const& min_t() const { return _min_t; }
+ T const& max_t() const { return _max_t; }
  T* org() { return _org; }
  T* dir() { return _dir; }
  T& min_t() { return _min_t; }
@@ -2592,7 +2596,9 @@ inline bool BVHAccel<T>::TestLeafNodeIntersections(
   ray_dir[1] = ray.dir()[1];
   ray_dir[2] = ray.dir()[2];
 
-  intersector.PrepareTraversal(ray);
+  BVHTraceOptions options;
+
+  intersector.PrepareTraversal(ray, options);
 
   for (unsigned int i = 0; i < num_primitives; i++) {
     unsigned int prim_idx = indices_[i + offset];

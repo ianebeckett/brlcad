@@ -124,8 +124,8 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
 
   // nanort::TriangleMesh<Float> triangle_mesh( tri_vert, tri_faces, sizeof(Float)*3 );
   // nanort::TriangleSAHPred<Float> triangle_pred( tri_vert, tri_faces, sizeof(Float)*3 );
-  nanort::TriangleMesh<Float> triangle_mesh( bot_ip->vertices, (const unsigned *) bot_ip->faces, sizeof(Float)*3 );
-  nanort::TriangleSAHPred<Float> triangle_pred( bot_ip->vertices, (const unsigned *) bot_ip->faces, sizeof(Float)*3 );
+  nanort::TriangleMesh<Float> triangle_mesh( bot_ip->vertices, (const unsigned *) bot_ip->faces, sizeof(fastf_t)*3 );
+  nanort::TriangleSAHPred<Float> triangle_pred( bot_ip->vertices, (const unsigned *) bot_ip->faces, sizeof(fastf_t)*3 );
 
 
   std::cerr << "Building accelerator..." << std::endl;
@@ -136,6 +136,8 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
   std::cerr << "Accelerator built! Took " << std::chrono::duration_cast< std::chrono::milliseconds >( end_time ).count() << " ms " << std::endl;
   nanort::BVHBuildStatistics stats = accel->GetStatistics();
 
+  if( not ret ) throw std::runtime_error("Failed to build NanoRT BVH!");
+
   printf("  BVH statistics:\n");
   printf("    # of leaf   nodes: %d\n", stats.num_leaf_nodes);
   printf("    # of branch nodes: %d\n", stats.num_branch_nodes);
@@ -143,6 +145,9 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
 
   // Set the min and max bounding boxes.
   accel->BoundingBox( stp->st_min, stp->st_max );
+  printf("  BVH Bounding Box Min: %.3f %.3f %.3f\n", stp->st_min[0], stp->st_min[1], stp->st_min[2]);
+  printf("  BVH Bounding Box Max: %.3f %.3f %.3f\n", stp->st_max[0], stp->st_max[1], stp->st_max[2]);
+
   // VMOVE(stp->st_min, tie->amin);
   // VMOVE(stp->st_max, tie->amax);
 
@@ -188,6 +193,7 @@ int  nanort_shot(struct soltab *stp, struct xray *rp, struct application *ap, st
   int i;
   fastf_t dirlen;
 
+
   bot = (struct bot_specific *)stp->st_specific;
   tie = (struct tie_s *)bot->tie;
 
@@ -206,11 +212,15 @@ int  nanort_shot(struct soltab *stp, struct xray *rp, struct application *ap, st
 
   // Single-point intersection
   nanort::TriangleIntersection<Float> isect;
-  nanort::Ray<Float> nrt_ray( ray.pos, ray.dir, 0, std::numeric_limits<Float>::max() );
+  nanort::Ray<Float> nrt_ray( ray.pos, ray.dir, std::numeric_limits<Float>::min(), std::numeric_limits<Float>::max() );
+  // nanort::StackVector<nanort::NodeHit<Float>, 128> hits;
+  // nanort::BVHTraceOptions options;
+  // auto hit = accel->ListNodeIntersections( nrt_ray, 128, intersector, &hits );
   bool hit = accel->Traverse( nrt_ray, intersector, &isect );
 
   if( hit ) {
-    printf("Ray hit @ t = %f\n", isect.t);
+    printf("Ray hit some nodes!\n");
+    // printf("Ray hit @ t = %f\n", isect.t);
   }
 
   // bool hit = accel->Traverse(
