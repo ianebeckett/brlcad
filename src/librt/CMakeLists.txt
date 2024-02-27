@@ -106,8 +106,7 @@ set(LIBRT_SOURCES
   primitives/bot/btg.c
   primitives/bot/btgf.c
   primitives/bot/decimate.c
-  primitives/bot/nanort/nanort.cc
-  primitives/bot/nanort/nanort_impl.cpp
+  #primitives/bot/bucket-pr-kdtree/bucket-pr_impl.cpp
   primitives/brep/brep.cpp
   primitives/bspline/bspline.cpp
   primitives/bspline/bspline_brep.cpp

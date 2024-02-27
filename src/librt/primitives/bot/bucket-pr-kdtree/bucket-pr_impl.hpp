@@ -3,7 +3,7 @@
 #include "rt/tie.h"
 
 extern "C" {
-    #include "nanort_interface.h"
+    #include "bucket-pr_interface.h"
     int rt_bot_shot(struct soltab *, struct xray *, struct application *, struct seg *);
 }
 

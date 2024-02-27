@@ -6,6 +6,8 @@
 #include "rt/tie.h"
 #include "bio.h"
 #include "rt/geom.h"
+#include "../tieprivate.h"
+#include "../btg.c"
 
 template<typename Float>
 using tree_t = jk::tree::KDTree<tie_tri_s, 3, 32UL, jk::tree::SquaredL2, Float>;
@@ -31,7 +33,7 @@ void bucketpr_push(struct tie_s *tie, TIE_3 **tlist, unsigned int tnum, void *pl
 
 	    if (MAGNITUDE(w.v) < 0.0001 * 0.0001) {
 		bu_log("WARNING: degenerate triangle found: %f %f %f | %f %f %f | %f %f %f\n",
-		       V3ARGS((*tlist[i*3+0]).v),  V3ARGS((*tlist[i*3+1]).v), V3ARGS((*tlist[i*3+2]).v));
+		        V3ARGS((*tlist[i*3+0]).v),  V3ARGS((*tlist[i*3+1]).v), V3ARGS((*tlist[i*3+2]).v));
 		continue;
 	    }
 	}
@@ -62,7 +64,7 @@ int bucketpr_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct r
     size_t tri_index, i;
     TIE_3 *tribuf = NULL, **tribufp = NULL;
 
-    tree_t kd_tree;
+    tree_t<Float> kd_tree;
 
     RT_BOT_CK_MAGIC(bot_ip);
 

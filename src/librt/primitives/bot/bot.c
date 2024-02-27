@@ -51,7 +51,7 @@
 /* private implementation headers */
 #include "./btg.h"	/* for the bottie_ functions */
 #include "./bot_edge.h"
-#include "nanort/nanort_interface.h" // C++ <-> C Interface header for NanoRT
+#include "bucket-pr-kdtree/bucket-pr_interface.h" // C++ <-> C Interface header for NanoRT
 #include "../../librt_private.h"
 
 //adding time only for now, delete later******
@@ -461,14 +461,14 @@ rt_bot_prep(struct soltab *stp, struct rt_db_internal *ip, struct rt_i *rtip)
 
     rt_bot_mintie = RT_DEFAULT_MINTIE;
     const char *bmintie = getenv("LIBRT_BOT_MINTIE");
-    const char *bnanort = getenv("LIBRT_BOT_NANORT");
+    const char *bbucketpr = getenv("LIBRT_BOT_BUCKETPR");
     if (bmintie)
 	rt_bot_mintie = atoi(bmintie);
 
     if (rt_bot_bbox(ip, &(stp->st_min), &(stp->st_max), &(rtip->rti_tol))) return 1;
 
-    if ( bnanort != NULL ) {
-        ret = nanort_build_double( stp, bot_ip, rtip );
+    if ( bbucketpr != NULL ) {
+        ret = bucketpr_build_double( stp, bot_ip, rtip );
     }
     else if (rt_bot_mintie > 0 && bot_ip->num_faces >= rt_bot_mintie /* FIXME: (necessary?) && (bot_ip->face_normals != NULL || bot_ip->orientation != RT_BOT_UNORIENTED) */)
 	ret = bottie_prep_double(stp, bot_ip, rtip);
@@ -571,8 +571,8 @@ rt_bot_shot(struct soltab *stp, struct xray *rp, struct application *ap, struct 
     if (UNLIKELY(!bot))
 	return 0;
 
-    if( bot->nanort != NULL ) {
-        return nanort_shot_double( stp, rp, ap, seghead );
+    if( bot->bucketpr != NULL ) {
+        //return nanort_shot_double( stp, rp, ap, seghead );
     }
     else if (bot->tie != NULL) {
 	return bottie_shot_double(stp, rp, ap, seghead);

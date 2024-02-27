@@ -37,7 +37,7 @@
 #include "tieprivate.h"
 
 #if defined(HAVE_ISNAN) && !defined(HAVE_DECL_ISNAN) && !defined(isnan)
-extern int isnan(double x);
+//extern int isnan(double x);
 #endif
 
 
