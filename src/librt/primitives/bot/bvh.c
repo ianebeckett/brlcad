@@ -158,9 +158,9 @@ int bottie_prep_bvh(TIE_3* tri_arr, int num_tris, void* persistant_storage, int 
     VMOVE(pass_up->max, bounds[0].data.bbox.highs.v);
     VADD2(pass_up->mid, pass_up->min, pass_up->max);
     VSCALE(pass_up->mid, pass_up->mid, 0.5f);
-    VSUB2(pass_up->amin, pass_up->min, pass_up->mid);
-    VSUB2(pass_up->amax, pass_up->max, pass_up->mid);
-    pass_up->radius = sqrt(VDOT(pass_up->amax, pass_up->amax));
+    VMOVE(pass_up->amin, pass_up->min);
+    VMOVE(pass_up->amax, pass_up->max);
+    pass_up->radius = DIST_PNT_PNT(pass_up->max, pass_up->mid);
 }
 
 void intersect_triangle(triangle* tri, 
