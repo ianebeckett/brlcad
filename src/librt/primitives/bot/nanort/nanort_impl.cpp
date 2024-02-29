@@ -14,6 +14,9 @@
 #include "rt/tie.h"
 #include "bio.h"
 #include "rt/geom.h"
+#include "rt/seg.h"
+#include "common.h"
+#include "vmath.h"
 
 #include "nanort.h"
 #include "../../../librt_private.h"
@@ -71,6 +74,7 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
   TIE_3 *tribuf = NULL, **tribufp = NULL;
 
   nanort::BVHBuildOptions<Float> build_options;
+  build_options.min_primitives_for_parallel_build = 0;
   nanort::BVHAccel<Float> * accel = new nanort::BVHAccel<Float>();
 
   RT_BOT_CK_MAGIC(bot_ip);
@@ -82,6 +86,7 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
   bot->bot_flags = bot_ip->bot_flags;
   bot_ip->nanort = bot->nanort = accel;
   bot_ip->tie = NULL;
+  printf("Mode: %d\nOrientation: %d\n", bot_ip->mode, bot_ip->orientation );
   if( stp->st_meth->ft_shot != rt_bot_shot ) {
     throw std::runtime_error("NanoRT ft_shot is not rt_bot_shot!");
   }
@@ -106,22 +111,22 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
 
 
   std::cerr << "Building triangle mesh and pred..." << std::endl;
-  static_assert( std::is_same_v< Float, std::decay_t<decltype(*bot_ip->vertices)>>, "Invalid floating point type!" );
+  // static_assert( std::is_same_v< Float, std::decay_t<decltype(*bot_ip->vertices)>>, "Invalid floating point type!" );
 
-  // 3 triangles per face; 3 floats per triangle
-  Float * tri_vert = (Float*)bu_malloc( sizeof(Float) * 3 * 3 * bot_ip->num_faces, "NanoRT vertex vector" );
-  unsigned int * tri_faces = (unsigned int*)bu_malloc( sizeof(unsigned int) * 3 * bot_ip->num_faces, "NanoRT faces vector" );
+  // // 3 triangles per face; 3 floats per triangle
+  // Float * tri_vert = (Float*)bu_malloc( sizeof(Float) * 3 * 3 * bot_ip->num_faces, "NanoRT vertex vector" );
+  // unsigned int * tri_faces = (unsigned int*)bu_malloc( sizeof(unsigned int) * 3 * bot_ip->num_faces, "NanoRT faces vector" );
 
-  // Copy data around
-  for (i = 0; i < bot_ip->num_faces*3; i++) {
-    // tribufp[i] = &tribuf[i];
-    // VMOVE(tribuf[i].v, (bot_ip->vertices+3*bot_ip->faces[i]));
-    VMOVE( &tri_vert[i*3], (bot_ip->vertices + 3*bot_ip->faces[i] ) );
+  // // Copy data around
+  // for (i = 0; i < bot_ip->num_faces*3; i++) {
+  //   // tribufp[i] = &tribuf[i];
+  //   // VMOVE(tribuf[i].v, (bot_ip->vertices+3*bot_ip->faces[i]));
+  //   VMOVE( &tri_vert[i*3], (bot_ip->vertices + 3*bot_ip->faces[i] ) );
 
-    tri_faces[i] = bot_ip->faces[i];
-  }
+  //   tri_faces[i] = bot_ip->faces[i];
+  // }
 
-  std::cerr << "Memcpy done..." << std::endl;
+  // std::cerr << "Memcpy done..." << std::endl;
 
   // nanort::TriangleMesh<Float> triangle_mesh( tri_vert, tri_faces, sizeof(Float)*3 );
   // nanort::TriangleSAHPred<Float> triangle_pred( tri_vert, tri_faces, sizeof(Float)*3 );
@@ -174,10 +179,59 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
   return 0;
 }
 
-static void *
-hitfunc(struct tie_ray_s *ray, struct tie_id_s *id, struct tie_tri_s *UNUSED(tri), void *ptr) {
+#define MAXHITS 128
 
-  return nullptr;
+struct hitdata_s {
+    int nhits;
+    struct hit hits[MAXHITS];
+    struct tri_specific ts[MAXHITS];
+    struct xray *rp;
+};
+
+static void *
+hitfunc(struct tie_ray_s *ray, struct tie_id_s *id, struct tie_tri_s *UNUSED(tri), void *ptr)
+{
+  struct hitdata_s *h = (struct hitdata_s *)ptr;
+  struct tri_specific *tsp;
+  struct hit *hp;
+
+  if (h->nhits > (MAXHITS-1)) {
+    bu_log("Too many hits!\n");
+    return (void *)1;
+  }
+
+  hp = &h->hits[h->nhits];
+  hp->hit_private = &h->ts[h->nhits];
+  tsp = (struct tri_specific *)hp->hit_private;
+  h->nhits++;
+
+
+  hp->hit_magic = RT_HIT_MAGIC;
+  hp->hit_dist = id->dist;
+
+  /* hit_vpriv is used later to clean up odd hits, exit before entrance, or
+   * dangling entrance in bot_makesegs_(). When TIE was leaving this
+   * unset, BOT hits were disappearing from the segment depending on the
+   * random hit_vpriv[X] uninitialized values - set it using id->norm and the
+   * ray direction. */
+  VMOVE(tsp->tri_N, id->norm);
+  hp->hit_vpriv[X] = VDOT(tsp->tri_N, ray->dir);
+
+  /* Of the hit_vpriv assignments added in commit 50164, only hit_vpriv[X]
+   * was based on initialized calculations.  Rather than leaving the other
+   * assignments (which were based on calculations using uninitialized values
+   * in the tsp struct) we simply assign 0 values.
+   *
+   * NOTE: bot_norm_ does use Y and Z in the normal calculations, so those
+   * still won't work.  Likewise, bot_plate_segs_ uses hit_surfno which is
+   * also not set correctly.  Perhaps the currently unused tri would have
+   * the needed info? */
+  hp->hit_vpriv[Y] = 0.0;
+  hp->hit_vpriv[Z] = 0.0;
+  hp->hit_surfno = 0;
+
+  /* add hitdist into array and add one to nhits */
+  return NULL;	/* continue firing */
 }
 
 template< typename Float >
@@ -195,7 +249,6 @@ int  nanort_shot(struct soltab *stp, struct xray *rp, struct application *ap, st
   fastf_t dirlen;
 
 
-  bot = (struct bot_specific *)stp->st_specific;
   tie = (struct tie_s *)bot->tie;
 
   // hitdata.nhits = 0;
@@ -220,6 +273,28 @@ int  nanort_shot(struct soltab *stp, struct xray *rp, struct application *ap, st
   bool hit = accel->Traverse( nrt_ray, intersector, &isect );
 
   if( hit ) {
+    struct hitdata_s hitdata;
+    hitdata.rp = rp;
+    struct tie_ray_s tie_ray;
+    struct tie_id_s tie_id;
+
+    Float *A = &((Float*)bot->bot_facearray)[ isect.prim_id + 0 ];
+    Float *B = &((Float*)bot->bot_facearray)[ isect.prim_id + 1 ];
+    Float *C = &((Float*)bot->bot_facearray)[ isect.prim_id + 2 ];
+
+    Float AC[3], AB[3], NORM;
+    VSUB2(AC, A, C);
+    VSUB2(AB, A, B);
+    VCROSS(tie_id.norm, AC, AB);
+    VUNITIZE( tie_id.norm );
+    tie_id.dist = isect.t;
+
+    VMOVE(tie_ray.dir, rp->r_dir);
+    VMOVE(tie_ray.pos, rp->r_pt );
+
+    hitfunc( &tie_ray, &tie_id, nullptr, &hitdata );
+    return rt_bot_makesegs( hitdata.hits, hitdata.nhits, stp, rp, ap, seghead, NULL );
+
     // printf("Ray hit some nodes!\n");
     // printf("Ray hit tri%d @ t = %f\n", isect.prim_id, isect.t);
   }
@@ -240,9 +315,25 @@ int  nanort_shot(struct soltab *stp, struct xray *rp, struct application *ap, st
   // for (i = 0; i < hitdata.nhits; i++)
   //   hitdata.hits[i].hit_surfno = 0;
 
+  if( hit ) {
+
+    seghead->seg_stp = stp;
+    struct hit hit_s;
+    hit_s.hit_dist = isect.t;
+    hit_s.hit_surfno = isect.prim_id;
+    hit_s.hit_point[0] = isect.t * ray.dir[0] + ray.pos[0];
+    hit_s.hit_point[1] = isect.t * ray.dir[1] + ray.pos[1];
+    hit_s.hit_point[2] = isect.t * ray.dir[2] + ray.pos[2];
+    hit_s.hit_rayp = rp;
+    struct tri_specific ts;
+    hit_s.hit_private = nullptr;
+
+
+    return rt_bot_makesegs(&hit_s, 1, stp, rp, ap, seghead, NULL);
+  }
+
   // return rt_bot_makesegs(hitdata.hits, hitdata.nhits, stp, rp, ap, seghead, NULL);
   return 0;
-  return rt_bot_makesegs(0, 0, stp, rp, ap, seghead, NULL);
 
 
   return -1;
