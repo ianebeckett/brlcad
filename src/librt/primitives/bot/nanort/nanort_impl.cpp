@@ -283,8 +283,8 @@ int  nanort_shot(struct soltab *stp, struct xray *rp, struct application *ap, st
     Float *C = &((Float*)bot->bot_facearray)[ isect.prim_id + 2 ];
 
     Float AC[3], AB[3], NORM;
-    VSUB2(AC, A, C);
-    VSUB2(AB, A, B);
+    VSUB2(AC, C, A);
+    VSUB2(AB, B, A);
     VCROSS(tie_id.norm, AC, AB);
     VUNITIZE( tie_id.norm );
     tie_id.dist = isect.t;
