@@ -104,6 +104,7 @@ int nanort_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_
   bot->bot_facearray = (void**)bot_ip->vertices;
   bot->bot_ntri = bot_ip->num_faces * 3;
 
+
   std::cerr << "Building triangle mesh and pred..." << std::endl;
   static_assert( std::is_same_v< Float, std::decay_t<decltype(*bot_ip->vertices)>>, "Invalid floating point type!" );
 
@@ -212,15 +213,15 @@ int  nanort_shot(struct soltab *stp, struct xray *rp, struct application *ap, st
 
   // Single-point intersection
   nanort::TriangleIntersection<Float> isect;
-  nanort::Ray<Float> nrt_ray( ray.pos, ray.dir, std::numeric_limits<Float>::min(), std::numeric_limits<Float>::max() );
+  nanort::Ray<Float> nrt_ray( ray.pos, ray.dir, rp->r_min, rp->r_max );
   // nanort::StackVector<nanort::NodeHit<Float>, 128> hits;
   // nanort::BVHTraceOptions options;
   // auto hit = accel->ListNodeIntersections( nrt_ray, 128, intersector, &hits );
   bool hit = accel->Traverse( nrt_ray, intersector, &isect );
 
   if( hit ) {
-    printf("Ray hit some nodes!\n");
-    // printf("Ray hit @ t = %f\n", isect.t);
+    // printf("Ray hit some nodes!\n");
+    // printf("Ray hit tri%d @ t = %f\n", isect.prim_id, isect.t);
   }
 
   // bool hit = accel->Traverse(
