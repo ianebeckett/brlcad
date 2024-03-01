@@ -56,16 +56,16 @@ void BuildBounds(triangle* trip, int trip_size, bvh_node* bounds_arr, int bounds
     VSETALL(bounds->highs.v, -INFINITY);
     
     //check each vertex in each triangle
-    TIE_3 average = {0.0f};
+    TFLOAT average = 0.0f;
     for (int t = 0; t < trip_size; t++) {
 	for (int i = 0; i < 3; i++) {
 	    TIE_3 pos = trip[t].verts[i];
 	    VMIN(bounds->lows.v, pos.v);
 	    VMAX(bounds->highs.v, pos.v);
-	    VADD2(average.v, average.v, div(pos, (float)trip_size).v);
+	    average += pos.v[cur_dim] / (float) trip_size;
 	}
     }
-    average = div(average, 3.0f);
+    average *= 1.0f / 3.0f;
     
     if (trip_size <= refs_that_fit_in_bounding_box * 2) {
 	//build leaf nodes and return
@@ -80,35 +80,39 @@ void BuildBounds(triangle* trip, int trip_size, bvh_node* bounds_arr, int bounds
 	}
 	return;
     }
-    // FIXME: 
-    // This is currently an insertion sort, because that was simple
-    // However we want to convert this to a qsort pivot around the 
-    // average, which we can calculate while we're checking the 
-    // minimum and maximum bounds.
-    
-    //insertion sort
-    for (int i = 1; i < trip_size; i++) {
-	triangle* i_tri = &trip[i];
-	float i_avg;
-	i_avg  = i_tri->verts[0].v[cur_dim];
-	i_avg += i_tri->verts[1].v[cur_dim];
-	i_avg += i_tri->verts[2].v[cur_dim];
-	i_avg /= 3.0;
-	triangle swap = trip[i];
-	int j;
-	for (j = i-1; j >= 0; j--) {
-	    triangle* j_tri = &trip[j];
-	    float j_avg;
-	    j_avg  = j_tri->verts[0].v[cur_dim];
-	    j_avg += j_tri->verts[1].v[cur_dim];
-	    j_avg += j_tri->verts[2].v[cur_dim];
-	    j_avg /= 3.0;
-	    if (j_avg < i_avg) {
-		break;
+	
+    //qsort pivot
+    {
+	triangle *lo, *hi;
+	TFLOAT lo_avg, hi_avg;
+	lo = trip;
+	hi = trip + (trip_size -1);
+	while (true) {
+	    // search up from lo to find one to swap
+	    while (true) {
+		lo_avg  = lo->verts[0].v[cur_dim];
+		lo_avg += lo->verts[1].v[cur_dim];
+		lo_avg += lo->verts[2].v[cur_dim];
+		lo_avg *= 1.0f / 3.0f;
+		if (lo_avg > average) break;
+		lo += 1;
 	    }
-	    trip[j+1] = trip[j];
+	    // search down from hi to find one to swap
+	    while (true) {
+		hi_avg  = hi->verts[0].v[cur_dim];
+		hi_avg += hi->verts[1].v[cur_dim];
+		hi_avg += hi->verts[2].v[cur_dim];
+		hi_avg *= 1.0f / 3.0f;
+		if (hi_avg < average) break;
+		hi -= 1;
+	    }
+	    // if the pointers crossed, we're done
+	    if (hi <= lo) break;
+	    // otherwise, do the swap and continue
+	    triangle swap = *lo;
+	    *lo = *hi;
+	    *hi = swap;
 	}
-	trip[j+1] = swap;
     }
     
     int next_dim = (cur_dim + 1) %3;
