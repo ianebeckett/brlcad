@@ -95,6 +95,7 @@ void BuildBounds(triangle* trip, int trip_size, bvh_node* bounds_arr, int bounds
 		lo_avg += lo->verts[2].v[cur_dim];
 		lo_avg *= 1.0f / 3.0f;
 		if (lo_avg > average) break;
+		if (lo >= trip + trip_size) break;
 		lo += 1;
 	    }
 	    // search down from hi to find one to swap
@@ -104,6 +105,7 @@ void BuildBounds(triangle* trip, int trip_size, bvh_node* bounds_arr, int bounds
 		hi_avg += hi->verts[2].v[cur_dim];
 		hi_avg *= 1.0f / 3.0f;
 		if (hi_avg < average) break;
+		if (hi < trip) break;
 		hi -= 1;
 	    }
 	    // if the pointers crossed, we're done
