@@ -1,116 +1,123 @@
-# Include directories needed by librt users
-set(RT_INCLUDE_DIRS
-  ${BRLCAD_BINARY_DIR}/include
-  ${BRLCAD_SOURCE_DIR}/include
-  ${BU_INCLUDE_DIRS}
-  ${BN_INCLUDE_DIRS}
-  ${BG_INCLUDE_DIRS}
-  ${NMG_INCLUDE_DIRS}
-  ${BREP_INCLUDE_DIRS}
-  ${P2T_INCLUDE_DIR}
-  ${OPENNURBS_INCLUDE_DIRS}
-  )
+  # Include directories needed by librt users
+  set(RT_INCLUDE_DIRS
+    ${BRLCAD_BINARY_DIR}/include
+    ${BRLCAD_SOURCE_DIR}/include
+    ${BU_INCLUDE_DIRS}
+    ${BN_INCLUDE_DIRS}
+    ${BG_INCLUDE_DIRS}
+    ${NMG_INCLUDE_DIRS}
+    ${BREP_INCLUDE_DIRS}
+    ${P2T_INCLUDE_DIR}
+    ${OPENNURBS_INCLUDE_DIRS}
+    )
 
-if(BRLCAD_ENABLE_OPENCL)
-  add_definitions(-DUSE_OPENCL)
-  set(RT_INCLUDE_DIRS ${RT_INCLUDE_DIRS} ${OPENCL_INCLUDE_DIRS})
-endif (BRLCAD_ENABLE_OPENCL)
+  if(ASSETIMPORT_LIBRARIES)
+    add_definitions(-DUSE_ASSETIMPORT)
+  endif(ASSETIMPORT_LIBRARIES)
 
-add_definitions(-DNANORT_USE_CPP11_FEATURE)
-add_definitions(-DNANORT_ENABLE_PARALLEL_BUILD)
+  if(BRLCAD_ENABLE_OPENCL)
+    add_definitions(-DUSE_OPENCL)
+    set(RT_INCLUDE_DIRS ${RT_INCLUDE_DIRS} ${OPENCL_INCLUDE_DIRS})
+  endif (BRLCAD_ENABLE_OPENCL)
 
-# locally used but not needed by users of the library
-set(RT_LOCAL_INCLUDE_DIRS
-  ${CMAKE_CURRENT_SOURCE_DIR}
-  ${CMAKE_CURRENT_SOURCE_DIR}/vds
-  ${CMAKE_CURRENT_SOURCE_DIR}/gdiam
-  ${REGEX_INCLUDE_DIRS}
-  )
-# FIXME: needs materialX
-#  ${CMAKE_CURRENT_SOURCE_DIR}/../../../MaterialXSource/source
+  add_definitions(-DNANORT_USE_CPP11_FEATURE)
+  add_definitions(-DNANORT_ENABLE_PARALLEL_BUILD)
+
+  # locally used but not needed by users of the library
+  set(RT_LOCAL_INCLUDE_DIRS
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/vds
+    ${CMAKE_CURRENT_SOURCE_DIR}/gdiam
+    ${REGEX_INCLUDE_DIRS}
+    ${MANIFOLD_INCLUDE_DIRS}
+    ${ASSETIMPORT_INCLUDE_DIR}
+    )
+  # FIXME: needs materialX
+  #  ${CMAKE_CURRENT_SOURCE_DIR}/../../../MaterialXSource/source
 
 
-BRLCAD_LIB_INCLUDE_DIRS(rt RT_INCLUDE_DIRS RT_LOCAL_INCLUDE_DIRS)
+  BRLCAD_LIB_INCLUDE_DIRS(rt RT_INCLUDE_DIRS RT_LOCAL_INCLUDE_DIRS)
 
-# FIXME: needs materialX
-#  material/materialX.cpp
-set(LIBRT_SOURCES
-  attr.cpp
-  attributes.c
-  bbox.c
-  binunif/binunif.c
-  binunif/db5_bin.c
-  bool.c
-  bool_tess.c
-  bundle.c
-  cache.c
-  cache_lz4.c
-  cmd.c
-  cyclic.c
-  comb/comb.c
-  comb/comb_brep.cpp
-  comb/comb_mirror.c
-  comb/db_comb.c
-  material/material.c
-  constraint.c
-  cut.c
-  cut_hlbvh.c
-  db5_alloc.c
-  db5_attr.c
-  db5_attr_registry.cpp
-  db5_io.c
-  db5_size.cpp
-  db5_scan.c
-  db5_types.c
-  db_alloc.c
-  db_anim.c
-  db_corrupt.c
-  db_diff.c
-  db_flags.c
-  db_flip.c
-  db_fullpath.cpp
-  db_inmem.c
-  db_io.c
-  db_lookup.c
-  db_match.c
-  db_open.c
-  db_scan.c
-  db_tree.cpp
-  db_walk.c
-  dir.c
-  dspline.c
-  fortray.c
-  gdiam/gdiam.cpp
-  globals.c
-  htbl.c
-  ls.c
-  mater.c
-  memalloc.c
-  mkbundle.c
-  op.c
-  pr.c
-  prep.cpp
-  primitives/annot/annot.c
-  primitives/arb8/arb8.c
-  primitives/arb8/arb8_brep.cpp
-  primitives/arb8/arb8_mirror.c
-  primitives/arb8/arb_edit.c
-  primitives/arbn/arbn.c
-  primitives/arbn/arbn_brep.cpp
-  primitives/arbn/arbn_mirror.c
-  primitives/ars/ars.c
-  primitives/ars/ars_brep.cpp
-  primitives/ars/ars_mirror.c
-  primitives/bot/bot.c
-  primitives/bot/bot_brep.cpp
-  primitives/bot/bot_edge.c
-  primitives/bot/bot_mirror.c
-  primitives/bot/bot_oriented_bbox.cpp
-  primitives/bot/btg.c
-  primitives/bot/btgf.c
-  primitives/bot/decimate.c
-  primitives/bot/nanort/nanort.cc
-  primitives/bot/nanort/nanort_impl.cpp
+  # FIXME: needs materialX
+  #  material/materialX.cpp
+  set(LIBRT_SOURCES
+    attr.cpp
+    attributes.c
+    bbox.c
+    binunif/binunif.c
+    binunif/db5_bin.c
+    bool.c
+    bool_tess.c
+    bundle.c
+    cache.c
+    cache_lz4.c
+    cmd.c
+    cyclic.c
+    comb/comb.c
+    comb/comb_brep.cpp
+    comb/comb_mirror.c
+    comb/db_comb.c
+    material/material.c
+    constraint.c
+    cut.c
+    cut_hlbvh.c
+    db5_alloc.c
+    db5_attr.c
+    db5_attr_registry.cpp
+    db5_io.c
+    db5_size.cpp
+    db5_scan.c
+    db5_types.c
+    db_alloc.c
+    db_anim.c
+    db_corrupt.c
+    db_diff.c
+    db_flags.c
+    db_flip.c
+    db_fullpath.cpp
+    db_inmem.c
+    db_io.c
+    db_lookup.c
+    db_match.c
+    db_open.c
+    db_scan.c
+    db_tree.cpp
+    db_walk.c
+    dir.c
+    dspline.c
+    fortray.c
+    gdiam/gdiam.cpp
+    globals.c
+    htbl.c
+    ls.c
+    mater.c
+    memalloc.c
+    mkbundle.c
+    op.c
+    pr.c
+    prep.cpp
+    primitives/annot/annot.c
+    primitives/arb8/arb8.c
+    primitives/arb8/arb8_brep.cpp
+    primitives/arb8/arb8_mirror.c
+    primitives/arb8/arb_edit.c
+    primitives/arbn/arbn.c
+    primitives/arbn/arbn_brep.cpp
+    primitives/arbn/arbn_mirror.c
+    primitives/ars/ars.c
+    primitives/ars/ars_brep.cpp
+    primitives/ars/ars_mirror.c
+    primitives/bot/bot.c
+    primitives/bot/bot_brep.cpp
+    primitives/bot/bot_edge.c
+    primitives/bot/bot_mirror.c
+    primitives/bot/bot_oriented_bbox.cpp
+    primitives/bot/btg.c
+    primitives/bot/btgf.c
+    primitives/bot/decimate.c
+    primitives/bot/nanort/nanort.cc
+    primitives/bot/nanort/nanort_impl.cpp
+    primitives/bot/plate.cpp
   primitives/brep/brep.cpp
   primitives/bspline/bspline.cpp
   primitives/bspline/bspline_brep.cpp
@@ -218,8 +225,6 @@ set(LIBRT_SOURCES
   primitives/tgc/tgc.c
   primitives/tgc/tgc_brep.cpp
   primitives/tgc/tgc_mirror.c
-  primitives/tgc/tgc_tess.c
-  primitives/tgc/tgc_tnurb.c
   primitives/tor/tor.c
   primitives/tor/tor_brep.cpp
   primitives/tor/tor_mirror.c
@@ -387,7 +392,7 @@ if(BRLCAD_ENABLE_SPR)
 endif(BRLCAD_ENABLE_SPR)
 
 
-BRLCAD_ADDLIB(librt "${LIBRT_SOURCES}" "${OPENCL_LIBS};${librt_deps};${OPENNURBS_LIBRARIES};${REGEX_LIBRARIES};${WINSOCK_LIB};${RPCRT_LIB};${STDCXX_LIBRARIES}")
+BRLCAD_ADDLIB(librt "${LIBRT_SOURCES}" "${OPENCL_LIBS};${librt_deps};${OPENNURBS_LIBRARIES};${MANIFOLD_LIBRARIES};${ASSETIMPORT_LIBRARIES};${REGEX_LIBRARIES};${WINSOCK_LIB};${RPCRT_LIB};${STDCXX_LIBRARIES}")
 
 # set(MATERIALX_LIBS ${CMAKE_CURRENT_SOURCE_DIR}/../../../MaterialXSource/lib/MaterialXCore.lib;${CMAKE_CURRENT_SOURCE_DIR}/../../../MaterialXSource/lib/MaterialXFormat.lib;${CMAKE_CURRENT_SOURCE_DIR}/../../../MaterialXSource/lib/MaterialXGenOsl.lib;${CMAKE_CURRENT_SOURCE_DIR}/../../../MaterialXSource/lib/MaterialXGenShader.lib)
 # BRLCAD_ADDLIB(librt "${LIBRT_SOURCES}" "${MATERIALX_LIBS};${OPENCL_LIBS};libbrep;libnmg;libbg;libbv;libbn;libbu;${OPENNURBS_LIBRARIES};${REGEX_LIBRARIES};${WINSOCK_LIB};${RPCRT_LIB};${STDCXX_LIBRARIES}")
