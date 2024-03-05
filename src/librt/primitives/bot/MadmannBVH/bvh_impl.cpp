@@ -16,10 +16,20 @@
 #include "rt/geom.h"
 #include "rt/seg.h"
 #include "common.h"
+#include "src/bbox.h"
+#include "src/executor.h"
+#include "src/thread_pool.h"
 #include "vmath.h"
 
 #include "src/bvh.h"
+#include "src/default_builder.h"
+#include "src/tri.h"
 #include "../../../librt_private.h"
+
+#include "bu/parallel.h"
+
+
+namespace BVH = bvh::v2;
 
 template< typename Float, typename ... Floats >
 Float ilist_func_apply( Float(*func)(std::initializer_list<Float>), Float f, Floats ... floats ) {
@@ -48,6 +58,15 @@ F min( F f, Float ... floats ) {
  */
 template< typename Float >
 int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *rtip ) {
+  using Scalar  = Float;
+  using Vec3    = bvh::v2::Vec<Scalar, 3>;
+  using BBox    = bvh::v2::BBox<Scalar, 3>;
+  using Tri     = bvh::v2::Tri<Scalar, 3>;
+  using Node    = bvh::v2::Node<Scalar, 3>;
+  using Bvh     = bvh::v2::Bvh<Node>;
+  using Ray     = bvh::v2::Ray<Scalar, 3>;
+  using PtrTri  = BVH::PtrTri<Scalar, 3>;
+
   struct tie_s *tie;
   struct bot_specific *bot;
   size_t tri_index, i;
@@ -56,6 +75,28 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   // nanort::BVHBuildOptions<Float> build_options;
   // build_options.min_primitives_for_parallel_build = 0;
   // nanort::BVHAccel<Float> * accel = new nanort::BVHAccel<Float>();
+  typename BVH::DefaultBuilder<Node>::Config config;
+  config.quality = BVH::DefaultBuilder<Node>::Quality::Low;
+
+
+  BVH::ThreadPool threadpool( bu_avail_cpus() );
+  BVH::ParallelExecutor executor( threadpool );
+
+  std::vector<BBox> bboxes( bot_ip->num_faces );
+  std::vector<Vec3> centers( bot_ip->num_faces );
+
+  executor.for_each( 0, bot_ip->num_faces, [&](size_t begin, size_t end) -> void {
+    for( unsigned i = begin; i < end; ++i ) {
+      auto tri_idx = i * 3 * 3;
+      PtrTri tri( &bot_ip->vertices[tri_idx + 0], &bot_ip->vertices[tri_idx + 3], &bot_ip->vertices[tri_idx + 6] );
+      bboxes[i] = tri.get_bbox();
+      centers[i] = tri.get_center();
+    }
+  });
+
+  auto bvh = BVH::DefaultBuilder<Node>::build( threadpool, bboxes, centers, config );
+
+  std::cerr << "BVH Built! Whoop!" << std::endl;
 
   RT_BOT_CK_MAGIC(bot_ip);
 

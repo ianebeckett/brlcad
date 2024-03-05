@@ -11,19 +11,27 @@
 
 namespace bvh::v2 {
 
-template <typename T, size_t N>
+template <typename T, size_t N, bool DO_STORE = true>
 struct Tri {
-    Vec<T, N> p0, p1, p2;
+    Vec<T, N, DO_STORE> p0, p1, p2;
 
     Tri() = default;
 
-    BVH_ALWAYS_INLINE Tri(const Vec<T, N>& p0, const Vec<T, N>& p1, const Vec<T, N>& p2)
+    BVH_ALWAYS_INLINE explicit Tri( T * p0, T * p1, T * p2 )
+      : p0( p0 ), p1( p1 ), p2( p2) {
+      static_assert( not DO_STORE );
+    }
+
+    BVH_ALWAYS_INLINE Tri(const Vec<T, N, DO_STORE>& p0, const Vec<T, N, DO_STORE>& p1, const Vec<T, N, DO_STORE>& p2)
         : p0(p0), p1(p1), p2(p2)
     {}
 
     BVH_ALWAYS_INLINE BBox<T, N> get_bbox() const { return BBox<T, N>(p0).extend(p1).extend(p2); }
-    BVH_ALWAYS_INLINE Vec<T, N> get_center() const { return (p0 + p1 + p2) * static_cast<T>(1. / 3.); }
+    BVH_ALWAYS_INLINE Vec<T, N, true> get_center() const { return (p0 + p1 + p2) * static_cast<T>(1. / 3.); }
 };
+
+template< typename T, size_t N >
+using PtrTri = Tri<T,N,false>;
 
 /// A 3d triangle, represented as two edges and a point, with an (unnormalized, left-handed) normal.
 template <typename T>
