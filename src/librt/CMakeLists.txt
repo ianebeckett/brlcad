@@ -115,8 +115,7 @@
     primitives/bot/btg.c
     primitives/bot/btgf.c
     primitives/bot/decimate.c
-    primitives/bot/nanort/nanort.cc
-    primitives/bot/nanort/nanort_impl.cpp
+    primitives/bot/MadmannBVH/bvh_impl.cpp
     primitives/bot/plate.cpp
   primitives/brep/brep.cpp
   primitives/bspline/bspline.cpp
