@@ -20,8 +20,6 @@
     set(RT_INCLUDE_DIRS ${RT_INCLUDE_DIRS} ${OPENCL_INCLUDE_DIRS})
   endif (BRLCAD_ENABLE_OPENCL)
 
-  add_definitions(-DNANORT_USE_CPP11_FEATURE)
-  add_definitions(-DNANORT_ENABLE_PARALLEL_BUILD)
 
   # locally used but not needed by users of the library
   set(RT_LOCAL_INCLUDE_DIRS
@@ -251,6 +249,7 @@
   )
 
 set_source_files_properties(gdiam/gdiam.cpp PROPERTIES COMPILE_FLAGS -w)
+set_source_files_properties(primitives/bot/MadmannBVH/bvh_impl.cpp PROPERTIES COMPILE_FLAGS -std=c++20 )
 
 
 if(BRLCAD_ENABLE_GCT)
