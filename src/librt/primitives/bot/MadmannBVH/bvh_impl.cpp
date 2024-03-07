@@ -291,6 +291,7 @@ hitfunc(struct tie_ray_s *ray, struct tie_id_s *id, struct tie_tri_s *UNUSED(tri
 template< typename Float >
 int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struct seg *seghead) {
   static int shot_number = 0;
+  static int hit_number = 0;
   shot_number++;
 
   using Scalar  = Float;
@@ -353,113 +354,50 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
           hit_isect = isect;
         }
         hit = true;
-        printf("Hit(%5d): %4d %.4f\n", shot_number, accel.tris[j].prim_id, isect );
+        // printf("Hit(%5d): %4d %.4f\n", shot_number, accel.tris[j].prim_id, isect );
         // auto & [u, v] = *uv;
-        // tie_id_s tie_id;
-        // tie_ray_s tie_ray;
+        tie_id_s tie_id;
+        tie_ray_s tie_ray;
 
-        // auto prim_id = accel.tris[j].prim_id;
+        auto prim_id = accel.tris[j].prim_id;
 
-        // Float *A = &((Float*)bot->bot_facearray)[ prim_id + 0 ];
-        // Float *B = &((Float*)bot->bot_facearray)[ prim_id + 1 ];
-        // Float *C = &((Float*)bot->bot_facearray)[ prim_id + 2 ];
+        Float *A = &((Float*)bot->bot_facearray)[ prim_id + 0 ];
+        Float *B = &((Float*)bot->bot_facearray)[ prim_id + 1 ];
+        Float *C = &((Float*)bot->bot_facearray)[ prim_id + 2 ];
 
-        // Float AC[3], AB[3], NORM;
-        // VSUB2(AC, C, A);
-        // VSUB2(AB, B, A);
-        // VCROSS(tie_id.norm, AC, AB);
-        // VUNITIZE( tie_id.norm );
-        // tie_id.dist = isect;
+        Float AC[3], AB[3], NORM;
+        VSUB2(AC, C, A);
+        VSUB2(AB, B, A);
+        VCROSS(tie_id.norm, AC, AB);
+        VUNITIZE( tie_id.norm );
+        tie_id.dist = isect;
 
-        // VMOVE(tie_ray.dir, rp->r_dir);
-        // VMOVE(tie_ray.pos, rp->r_pt );
+        VMOVE(tie_ray.dir, bvhray.dir.values );
+        VMOVE(tie_ray.pos, bvhray.org.values );
 
-        // auto hfret = hitfunc( &tie_ray, &tie_id, nullptr, &hitdata );
-        // if( hfret != nullptr ) {
-        //   throw std::runtime_error("Too many hits!!!");
-        // }
+        auto hfret = hitfunc( &tie_ray, &tie_id, nullptr, &hitdata );
+        if( hfret != nullptr ) {
+          throw std::runtime_error("Too many hits!!!");
+        }
       }
 
     }
     return hit;
   });
 
-  if( hit_prim != -1 ) {
-    printf("Found hit. T = %.4f  ID=%5d\n", hit_isect, hit_prim );
-  }
-
-  if( hit_prim != -1 ) {
-    tie_id_s tie_id;
-    tie_ray_s tie_ray;
-
-    Float *A = &((Float*)bot->bot_facearray)[ hit_prim + 0 ];
-    Float *B = &((Float*)bot->bot_facearray)[ hit_prim + 1 ];
-    Float *C = &((Float*)bot->bot_facearray)[ hit_prim + 2 ];
-
-    Float AC[3], AB[3], NORM;
-    VSUB2(AC, C, A);
-    VSUB2(AB, B, A);
-    VCROSS(tie_id.norm, AC, AB);
-    VUNITIZE( tie_id.norm );
-    tie_id.dist = hit_isect;
-
-    VMOVE(tie_ray.dir, rp->r_dir);
-    VMOVE(tie_ray.pos, rp->r_pt );
-
-    auto hfret = hitfunc( &tie_ray, &tie_id, nullptr, &hitdata );
-    if( hfret != nullptr ) {
-      throw std::runtime_error("Too many hits!!!");
-    }
-
-    if( hitdata.nhits > 1 ) {
-      std::cerr << "Error in hit functioning for primitive "  << hit_prim << std::endl;
-      std::cerr << "Hitdata num hits: " << hitdata.nhits << std::endl;;
-      throw std::runtime_error("More hits than possible????");
-    }
-  }
-
-
-  if( hit_prim != -1 ) {
-    return rt_bot_makesegs( hitdata.hits, hitdata.nhits, stp, rp, ap, seghead, nullptr );
-  }
-  return 0;
-
-  // nanort::TriangleIntersector< Float, nanort::TriangleIntersection< Float > > intersector( (Float*)bot->bot_facearray, (const unsigned*)bot->bot_facelist, sizeof(Float)*3 );
-
-  // // Single-point intersection
-  // nanort::TriangleIntersection<Float> isect;
-  // nanort::Ray<Float> nrt_ray( ray.pos, ray.dir, rp->r_min, rp->r_max );
-  // // nanort::StackVector<nanort::NodeHit<Float>, 128> hits;
-  // // nanort::BVHTraceOptions options;
-  // // auto hit = accel->ListNodeIntersections( nrt_ray, 128, intersector, &hits );
-  // bool hit = accel->Traverse( nrt_ray, intersector, &isect );
-
-  // if( hit ) {
-  //   struct hitdata_s hitdata;
-  //   hitdata.rp = rp;
-  //   struct tie_ray_s tie_ray;
-  //   struct tie_id_s tie_id;
-
-  //   Float *A = &((Float*)bot->bot_facearray)[ isect.prim_id + 0 ];
-  //   Float *B = &((Float*)bot->bot_facearray)[ isect.prim_id + 1 ];
-  //   Float *C = &((Float*)bot->bot_facearray)[ isect.prim_id + 2 ];
-
-  //   Float AC[3], AB[3], NORM;
-  //   VSUB2(AC, C, A);
-  //   VSUB2(AB, B, A);
-  //   VCROSS(tie_id.norm, AC, AB);
-  //   VUNITIZE( tie_id.norm );
-  //   tie_id.dist = isect.t;
-
-  //   VMOVE(tie_ray.dir, rp->r_dir);
-  //   VMOVE(tie_ray.pos, rp->r_pt );
-
-  //   hitfunc( &tie_ray, &tie_id, nullptr, &hitdata );
-  //   return rt_bot_makesegs( hitdata.hits, hitdata.nhits, stp, rp, ap, seghead, NULL );
-
-  //   // printf("Ray hit some nodes!\n");
-  //   // printf("Ray hit tri%d @ t = %f\n", isect.prim_id, isect.t);
+  // if( hit_prim != -1 ) {
+  //   printf("Found hit(%4d). T = %.4f  ID=%5d\n", shot_number, hit_isect, hit_prim );
+  //   printf("Hit number %d\n", ++hit_number );
   // }
 
-  return -1;
+  if( hit_prim != -1 ) {
+    for (i = 0; i < hitdata.nhits; i++)
+      hitdata.hits[i].hit_dist = hitdata.hits[i].hit_dist - dirlen;
+    for (i = 0; i < hitdata.nhits; i++)
+        hitdata.hits[i].hit_surfno = 0;
+    return rt_bot_makesegs( hitdata.hits, hitdata.nhits, stp, rp, ap, seghead, nullptr );
+  }
+
+  return 0;
+
 }
