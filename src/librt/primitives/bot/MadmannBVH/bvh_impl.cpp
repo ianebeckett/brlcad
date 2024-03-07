@@ -175,7 +175,7 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
       }
 
       accel.tris[i] = tris[j];
-      accel.tris[i].prim_id = j;
+      accel.tris[i].prim_id = bot_ip->faces[i];
     }
   });
 
