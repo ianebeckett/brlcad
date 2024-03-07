@@ -22,6 +22,10 @@ struct Tri {
       static_assert( not DO_STORE );
     }
 
+    template< bool DS = DO_STORE, class = std::enable_if_t< DS > >
+    BVH_ALWAYS_INLINE Tri( Tri<T,N,false> const & other )
+      : p0( other.p0 ), p1( other.p1 ), p2( other.p2 ) {}
+
     BVH_ALWAYS_INLINE Tri(const Vec<T, N, DO_STORE>& p0, const Vec<T, N, DO_STORE>& p1, const Vec<T, N, DO_STORE>& p2)
         : p0(p0), p1(p1), p2(p2)
     {}
@@ -37,6 +41,7 @@ using PtrTri = Tri<T,N,false>;
 template <typename T>
 struct PrecomputedTri {
     Vec<T, 3> p0, e1, e2, n;
+    size_t prim_id = -1;
 
     PrecomputedTri() = default;
 
@@ -44,7 +49,8 @@ struct PrecomputedTri {
         : p0(p0), e1(p0 - p1), e2(p2 - p0), n(cross(e1, e2))
     {}
 
-    BVH_ALWAYS_INLINE PrecomputedTri(const Tri<T, 3>& triangle)
+    template< bool B >
+    BVH_ALWAYS_INLINE PrecomputedTri(const Tri<T, 3, B>& triangle)
         : PrecomputedTri(triangle.p0, triangle.p1, triangle.p2)
     {}
 
@@ -56,13 +62,21 @@ struct PrecomputedTri {
     /// intersects the triangle, otherwise returns nothing. The distance at which the ray intersects
     /// the triangle is set in `ray.tmax`. The tolerance can be adjusted to account for numerical
     /// precision issues.
+    template< bool B >
     BVH_ALWAYS_INLINE std::optional<std::pair<T, T>> intersect(
-        Ray<T, 3>& ray,
-        T tolerance = -std::numeric_limits<T>::epsilon()) const;
+        Ray<T, 3, B>& ray,
+        T & isect,
+        T tolerance ) const; // = -std::numeric_limits<T>::epsilon()) const;
+    // BVH_ALWAYS_INLINE std::optional<std::pair<T, T>> intersect(
+    //     Ray<T, 3>& ray,
+    //     T tolerance = -std::numeric_limits<T>::epsilon()) const {
+    //   return intersect( ray, ray.tmax, tolerance );
+    // }
 };
 
 template <typename T>
-std::optional<std::pair<T, T>> PrecomputedTri<T>::intersect(Ray<T, 3>& ray, T tolerance) const {
+template< bool B >
+std::optional<std::pair<T, T>> PrecomputedTri<T>::intersect(Ray<T, 3, B>& ray, T & isect, T tolerance) const {
     auto c = p0 - ray.org;
     auto r = cross(ray.dir, c);
     auto inv_det = static_cast<T>(1.) / dot(n, ray.dir);
@@ -76,7 +90,7 @@ std::optional<std::pair<T, T>> PrecomputedTri<T>::intersect(Ray<T, 3>& ray, T to
     if (u >= tolerance && v >= tolerance && w >= tolerance) {
         auto t = dot(n, c) * inv_det;
         if (t >= ray.tmin && t <= ray.tmax) {
-            ray.tmax = t;
+            isect = t;
             return std::make_optional(std::pair<T, T> { u, v });
         }
     }

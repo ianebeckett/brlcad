@@ -12,18 +12,29 @@ struct Octant {
     uint32_t operator [] (size_t i) const { return (value >> i) & uint32_t{1}; }
 };
 
-template <typename T, size_t N>
+template <typename T, size_t N, bool DO_STORE = true>
 struct Ray {
-    Vec<T, N> org, dir;
+    Vec<T, N, DO_STORE> org, dir;
     T tmin, tmax;
 
     Ray() = default;
+
+    template< bool DS = DO_STORE, class = std::enable_if_t< DS > >
     BVH_ALWAYS_INLINE Ray(
         const Vec<T, N>& org,
         const Vec<T, N>& dir,
         T tmin = 0,
         T tmax = std::numeric_limits<T>::max())
         : org(org), dir(dir), tmin(tmin), tmax(tmax)
+    {}
+
+    template< bool DS = not DO_STORE, class = std::enable_if_t< DS > >
+    BVH_ALWAYS_INLINE Ray(
+        T * org,
+        T * dir,
+        T tmin = 0,
+        T tmax = std::numeric_limits<T>::max() )
+      : org(org), dir(dir), tmin(tmin), tmax(tmax)
     {}
 
     template <bool SafeInverse = false>
@@ -45,6 +56,11 @@ struct Ray {
     // Pads the inverse direction according to T. Ize's "Robust BVH ray traversal"
     BVH_ALWAYS_INLINE static Vec<T, N> pad_inv_dir(const Vec<T, N>& inv_dir) {
         return Vec<T, N>::generate([&] (size_t i) { return add_ulp_magnitude(inv_dir[i], 2); });
+    }
+
+    template< bool DS = DO_STORE >
+    operator typename std::enable_if_t< not DS, Ray<T, N, true> >() const {
+      return Ray<T,N,true>( org, dir, tmin, tmax );
     }
 };
 

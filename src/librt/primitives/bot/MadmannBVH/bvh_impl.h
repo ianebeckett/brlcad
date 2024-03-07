@@ -46,16 +46,16 @@ extern "C" {
 #ifdef __cplusplus
 extern "C" {
    int bvh_build_double( struct soltab *stp, struct rt_bot_internal *bot, struct rt_i *rtip ) {
-    return bvh_build<double>(stp,bot,rtip);
+    return bvh_build<fastf_t>(stp,bot,rtip);
   }
    int bvh_shot_double(struct soltab *stp, struct xray *rp, struct application *ap, struct seg *seghead) {
-    return bvh_shot<double>(stp,rp,ap,seghead);
+    return bvh_shot<fastf_t>(stp,rp,ap,seghead);
   }
    int bvh_build_float( struct soltab *stp, struct rt_bot_internal *bot, struct rt_i *rtip ) {
-    return bvh_build<float>(stp,bot,rtip);
+    return bvh_build<fastf_t>(stp,bot,rtip);
   }
    int bvh_shot_float(struct soltab *stp, struct xray *rp, struct application *ap, struct seg *seghead) {
-    return bvh_shot<float>(stp,rp,ap,seghead);
+    return bvh_shot<fastf_t>(stp,rp,ap,seghead);
   }
 }
 #endif

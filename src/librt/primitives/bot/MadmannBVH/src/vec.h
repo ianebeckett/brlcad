@@ -13,24 +13,41 @@ namespace bvh::v2 {
 
 template <typename T, size_t N, bool DO_STORE = true>
 struct Vec {
+    /**
+     * Select between an N-length array and a pointer
+     * based on the DO_STORE template parameter
+     */
     using value_type = std::conditional_t< DO_STORE, T[N], T* >;
 
-    // T values[N];
     value_type values;
 
     Vec() = default;
+
+    /**
+     * ADDED BY TAMU Spring2024 Capstone Team
+     *
+     * Selectively enable/disable constructor based on whether the
+     * Vec implementation is pointer or array based.
+     */
+    template< bool DS = DO_STORE, class = std::enable_if_t< not DS > >
     BVH_ALWAYS_INLINE explicit Vec( T * ptr ) {
       static_assert( not DO_STORE, "Can only set vec to pointer if not storing internally!" );
       values = ptr;
     }
-    template <typename... Args>
-    BVH_ALWAYS_INLINE Vec(T x, T y, Args&&... args) : values { x, y, static_cast<T>(std::forward<Args>(args))... } {
-      static_assert( DO_STORE, "Cannot fill null pointer" );
-    }
+    template< bool DS = DO_STORE, class = std::enable_if_t< DS > >
     BVH_ALWAYS_INLINE explicit Vec(T x) {
       static_assert( DO_STORE, "Cannot fill null pointer" );
       std::fill(values, values + N, x);
     }
+    /**
+     * END TAMU CAPSTONE 2024 SECTION
+     */
+
+    template <typename... Args>
+    BVH_ALWAYS_INLINE Vec(T x, T y, Args&&... args) : values { x, y, static_cast<T>(std::forward<Args>(args))... } {
+      static_assert( DO_STORE, "Cannot fill null pointer" );
+    }
+
 
     template <typename Compare>
     BVH_ALWAYS_INLINE size_t get_best_axis(Compare&& compare) const {
@@ -56,6 +73,11 @@ struct Vec {
         return v;
     }
 
+    /**
+     * Conversion operator from pointer based to array-based Vec.
+     * The inverse conversion (array to pointer) cannot be done without
+     * allocating memory on heap (or supplying a pointer to stack memory)
+     */
     template< bool DNS = not DO_STORE >
     operator typename std::enable_if_t< DNS, Vec<T, N> >() const {
       Vec<T,N> vec;
@@ -65,9 +87,14 @@ struct Vec {
 
 };
 
+/**
+ * All of the following math operators and functions should work on
+ * array and pointer Vecs interchangeably, so must be templated accordingly
+ */
+
 template <typename T, size_t N, bool B1, bool B2>
 BVH_ALWAYS_INLINE Vec<T, N> operator + (const Vec<T, N, B1>& a, const Vec<T, N, B2>& b) {
-    return Vec<T, N>::generate([&] (size_t i) { return a[i] + b[i]; });
+    return Vec<T, N, true>::generate([&] (size_t i) { return a[i] + b[i]; });
 }
 
 template <typename T, size_t N, bool B1, bool B2>

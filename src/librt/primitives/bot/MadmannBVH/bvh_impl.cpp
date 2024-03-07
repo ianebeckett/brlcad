@@ -24,10 +24,12 @@
 #include "src/bvh.h"
 #include "src/default_builder.h"
 #include "src/tri.h"
+#include "src/stack.h"
 #include "../../../librt_private.h"
 
 #include "bu/parallel.h"
 
+#define PERMUTE_PRIMS true
 
 namespace BVH = bvh::v2;
 
@@ -51,6 +53,21 @@ F min( F f, Float ... floats ) {
   return ilist_func_apply( std::min, f, floats ... );
 }
 
+template< typename Float >
+struct Accel {
+  using Scalar  = Float;
+  using Vec3    = bvh::v2::Vec<Scalar, 3>;
+  using BBox    = bvh::v2::BBox<Scalar, 3>;
+  using Tri     = bvh::v2::Tri<Scalar, 3>;
+  using Node    = bvh::v2::Node<Scalar, 3>;
+  using Bvh     = bvh::v2::Bvh<Node>;
+  using Ray     = bvh::v2::Ray<Scalar, 3>;
+  using PrecomputedTri = bvh::v2::PrecomputedTri<Scalar>;
+
+  Bvh bvh;
+  std::vector<PrecomputedTri> tris;
+};
+
 /**
  * @brief Implementation of NanoRT BVH Building
  *
@@ -72,32 +89,6 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   size_t tri_index, i;
   TIE_3 *tribuf = NULL, **tribufp = NULL;
 
-  // nanort::BVHBuildOptions<Float> build_options;
-  // build_options.min_primitives_for_parallel_build = 0;
-  // nanort::BVHAccel<Float> * accel = new nanort::BVHAccel<Float>();
-  typename BVH::DefaultBuilder<Node>::Config config;
-  config.quality = BVH::DefaultBuilder<Node>::Quality::Low;
-
-
-  BVH::ThreadPool threadpool( bu_avail_cpus() );
-  BVH::ParallelExecutor executor( threadpool );
-
-  std::vector<BBox> bboxes( bot_ip->num_faces );
-  std::vector<Vec3> centers( bot_ip->num_faces );
-
-  executor.for_each( 0, bot_ip->num_faces, [&](size_t begin, size_t end) -> void {
-    for( unsigned i = begin; i < end; ++i ) {
-      auto tri_idx = i * 3 * 3;
-      PtrTri tri( &bot_ip->vertices[tri_idx + 0], &bot_ip->vertices[tri_idx + 3], &bot_ip->vertices[tri_idx + 6] );
-      bboxes[i] = tri.get_bbox();
-      centers[i] = tri.get_center();
-    }
-  });
-
-  auto bvh = BVH::DefaultBuilder<Node>::build( threadpool, bboxes, centers, config );
-
-  std::cerr << "BVH Built! Whoop!" << std::endl;
-
   RT_BOT_CK_MAGIC(bot_ip);
 
   BU_GET(bot, struct bot_specific);
@@ -108,9 +99,6 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   bot_ip->nanort = bot->nanort = nullptr;
   bot_ip->tie = NULL;
   printf("Mode: %d\nOrientation: %d\n", bot_ip->mode, bot_ip->orientation );
-  if( stp->st_meth->ft_shot != rt_bot_shot ) {
-    throw std::runtime_error("NanoRT ft_shot is not rt_bot_shot!");
-  }
   if (bot_ip->thickness) {
     bot->bot_thickness = (fastf_t *)bu_calloc(bot_ip->num_faces, sizeof(fastf_t), "bot_thickness");
     for (tri_index = 0; tri_index < bot_ip->num_faces; tri_index++)
@@ -129,6 +117,69 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   bot->bot_facelist = bot_ip->faces;
   bot->bot_facearray = (void**)bot_ip->vertices;
   bot->bot_ntri = bot_ip->num_faces * 3;
+
+  bot->nanort = bot_ip->nanort = new Accel<Float>();
+  Accel<Float> & accel = *(Accel<Float>*)bot_ip->nanort;
+
+  // nanort::BVHBuildOptions<Float> build_options;
+  // build_options.min_primitives_for_parallel_build = 0;
+  // nanort::BVHAccel<Float> * accel = new nanort::BVHAccel<Float>();
+  typename BVH::DefaultBuilder<Node>::Config config;
+  config.quality = BVH::DefaultBuilder<Node>::Quality::Low;
+
+
+  // BVH::ThreadPool threadpool;
+  BVH::ThreadPool threadpool( bu_avail_cpus() );
+  BVH::ParallelExecutor executor( threadpool );
+
+  BBox model_bbox = BBox::make_empty();
+  std::vector<BBox> bboxes( bot_ip->num_faces );
+  std::vector<Vec3> centers( bot_ip->num_faces );
+  std::vector<PtrTri> tris( bot_ip->num_faces );
+
+  std::cout << "Made threadpool and executor!" << std::endl;
+
+  executor.for_each( 0, bot_ip->num_faces, [&bot_ip, &centers, &bboxes, &tris, &model_bbox](size_t begin, size_t end) -> void {
+    for( unsigned i = begin; i < end; ++i ) {
+      auto face = bot_ip->faces[i];
+      auto tri_idx = face * 3 * 3;
+      Float * v0 = bot_ip->vertices + tri_idx;
+      Float * v1 = bot_ip->vertices + tri_idx + 3;
+      Float * v2 = bot_ip->vertices + tri_idx + 6;
+      PtrTri tri( v0, v1, v2 );
+
+      centers[i] = tri.get_center();
+      bboxes[i] = tri.get_bbox();
+      tris[i] = tri;
+      model_bbox.extend( bboxes[i] );
+    }
+  });
+
+
+  std::cout << "Bounding boxes and centers calculated" << std::endl;
+
+  accel.bvh = BVH::DefaultBuilder<Node>::build( threadpool, bboxes, centers, config );
+
+  std::cerr << "BVH Built! Whoop!" << std::endl;
+
+  // Precompute Triangles...
+  accel.tris.resize( bot_ip->num_faces );
+  executor.for_each( 0, bot_ip->num_faces, [&accel, &bot_ip, &tris]( size_t begin, size_t end ) {
+    for( int i = begin; i < end; i++ ) {
+      int j;
+      if constexpr ( PERMUTE_PRIMS ) {
+        j = bot_ip->faces[i];
+      }
+      else {
+        j = i;
+      }
+
+      accel.tris[i] = tris[j];
+      accel.tris[i].prim_id = j;
+    }
+  });
+
+  std::cerr << "Triangles Computed!" << std::endl;
 
 
   // std::cerr << "Building triangle mesh and pred..." << std::endl;
@@ -155,6 +206,8 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   // accel->BoundingBox( stp->st_min, stp->st_max );
   // printf("  BVH Bounding Box Min: %.3f %.3f %.3f\n", stp->st_min[0], stp->st_min[1], stp->st_min[2]);
   // printf("  BVH Bounding Box Max: %.3f %.3f %.3f\n", stp->st_max[0], stp->st_max[1], stp->st_max[2]);
+  VMOVE( stp->st_min, model_bbox.min.values );
+  VMOVE( stp->st_max, model_bbox.max.values );
 
   // VMOVE(stp->st_min, tie->amin);
   // VMOVE(stp->st_max, tie->amax);
@@ -164,9 +217,8 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
 
   // VMOVE(stp->st_center, tie->mid);
   // Calculate center of bounding box
-  for( int i = 0; i < 3; i++ ) {
-    stp->st_center[i] =  (stp->st_max[i] - stp->st_min[i]) / (Float)2.f;
-  }
+  VMOVE( stp->st_center, model_bbox.get_center().values );
+
   // TODO: How to calculate this?
   // FIXME: Actually calculate. Currently just the max of the distances from the center...
   auto radius = max( std::abs( stp->st_max[0] - stp->st_center[0] ),
@@ -238,8 +290,22 @@ hitfunc(struct tie_ray_s *ray, struct tie_id_s *id, struct tie_tri_s *UNUSED(tri
 
 template< typename Float >
 int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struct seg *seghead) {
+  static int shot_number = 0;
+  shot_number++;
+
+  using Scalar  = Float;
+  using Vec3    = bvh::v2::Vec<Scalar, 3>;
+  using BBox    = bvh::v2::BBox<Scalar, 3>;
+  using Tri     = bvh::v2::Tri<Scalar, 3>;
+  using Node    = bvh::v2::Node<Scalar, 3>;
+  using Bvh     = bvh::v2::Bvh<Node>;
+  using Ray     = bvh::v2::Ray<Scalar, 3, false>;
+  using PtrTri  = BVH::PtrTri<Scalar, 3>;
+  constexpr size_t invalid_prim_id = std::numeric_limits<size_t>::max();
+
   struct bot_specific * bot = (bot_specific*)stp->st_specific;
   // nanort::BVHAccel<Float> * accel = (nanort::BVHAccel<Float>*) bot->nanort;
+  Accel<Float> & accel = *(Accel<Float>*)bot->nanort;
 
   // printf("Performing NanoRT shot!\n");
 
@@ -261,8 +327,102 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
   dirlen = MAGSQ(rp->r_dir);
   VSUB2(ray.pos, rp->r_pt, rp->r_dir);	/* step back one dirlen */
   VMOVE(ray.dir, rp->r_dir);
-  ray.depth = ray.kdtree_depth = 0;
 
+  struct hitdata_s hitdata;
+  hitdata.nhits = 0;
+  hitdata.rp = rp;
+
+  bvh::v2::SmallStack<typename Bvh::Index, 128 > stack;
+  Ray bvhray( ray.pos, ray.dir, rp->r_min, rp->r_max );
+  Float hit_isect = std::numeric_limits<Float>::max();
+  size_t hit_prim = -1;
+  accel.bvh.template intersect<false, false>( bvhray, accel.bvh.get_root().index, stack, [&](size_t begin, size_t end) {
+    bool hit = false;
+    for( int i = begin; i < end; ++i ) {
+      int j = i;
+      if constexpr( PERMUTE_PRIMS ) {
+        j = accel.bvh.prim_ids[i];
+      }
+
+      // HIT
+      Float isect = 0;
+      auto uv = accel.tris[j].intersect( bvhray, isect, -std::numeric_limits<Float>::epsilon() );
+      if( uv ) {
+        if( isect < hit_isect ) {
+          hit_prim = accel.tris[j].prim_id;
+          hit_isect = isect;
+        }
+        hit = true;
+        printf("Hit(%5d): %4d %.4f\n", shot_number, accel.tris[j].prim_id, isect );
+        // auto & [u, v] = *uv;
+        // tie_id_s tie_id;
+        // tie_ray_s tie_ray;
+
+        // auto prim_id = accel.tris[j].prim_id;
+
+        // Float *A = &((Float*)bot->bot_facearray)[ prim_id + 0 ];
+        // Float *B = &((Float*)bot->bot_facearray)[ prim_id + 1 ];
+        // Float *C = &((Float*)bot->bot_facearray)[ prim_id + 2 ];
+
+        // Float AC[3], AB[3], NORM;
+        // VSUB2(AC, C, A);
+        // VSUB2(AB, B, A);
+        // VCROSS(tie_id.norm, AC, AB);
+        // VUNITIZE( tie_id.norm );
+        // tie_id.dist = isect;
+
+        // VMOVE(tie_ray.dir, rp->r_dir);
+        // VMOVE(tie_ray.pos, rp->r_pt );
+
+        // auto hfret = hitfunc( &tie_ray, &tie_id, nullptr, &hitdata );
+        // if( hfret != nullptr ) {
+        //   throw std::runtime_error("Too many hits!!!");
+        // }
+      }
+
+    }
+    return hit;
+  });
+
+  if( hit_prim != -1 ) {
+    printf("Found hit. T = %.4f  ID=%5d\n", hit_isect, hit_prim );
+  }
+
+  if( hit_prim != -1 ) {
+    tie_id_s tie_id;
+    tie_ray_s tie_ray;
+
+    Float *A = &((Float*)bot->bot_facearray)[ hit_prim + 0 ];
+    Float *B = &((Float*)bot->bot_facearray)[ hit_prim + 1 ];
+    Float *C = &((Float*)bot->bot_facearray)[ hit_prim + 2 ];
+
+    Float AC[3], AB[3], NORM;
+    VSUB2(AC, C, A);
+    VSUB2(AB, B, A);
+    VCROSS(tie_id.norm, AC, AB);
+    VUNITIZE( tie_id.norm );
+    tie_id.dist = hit_isect;
+
+    VMOVE(tie_ray.dir, rp->r_dir);
+    VMOVE(tie_ray.pos, rp->r_pt );
+
+    auto hfret = hitfunc( &tie_ray, &tie_id, nullptr, &hitdata );
+    if( hfret != nullptr ) {
+      throw std::runtime_error("Too many hits!!!");
+    }
+
+    if( hitdata.nhits > 1 ) {
+      std::cerr << "Error in hit functioning for primitive "  << hit_prim << std::endl;
+      std::cerr << "Hitdata num hits: " << hitdata.nhits << std::endl;;
+      throw std::runtime_error("More hits than possible????");
+    }
+  }
+
+
+  if( hit_prim != -1 ) {
+    return rt_bot_makesegs( hitdata.hits, hitdata.nhits, stp, rp, ap, seghead, nullptr );
+  }
+  return 0;
 
   // nanort::TriangleIntersector< Float, nanort::TriangleIntersection< Float > > intersector( (Float*)bot->bot_facearray, (const unsigned*)bot->bot_facelist, sizeof(Float)*3 );
 
