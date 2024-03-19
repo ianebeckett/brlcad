@@ -308,8 +308,6 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
   // nanort::BVHAccel<Float> * accel = (nanort::BVHAccel<Float>*) bot->nanort;
   Accel<Float> & accel = *(Accel<Float>*)bot->nanort;
 
-  // printf("Performing NanoRT shot!\n");
-
   struct tie_s *tie;
   // struct hitdata_s hitdata;
   struct tie_id_s id;
