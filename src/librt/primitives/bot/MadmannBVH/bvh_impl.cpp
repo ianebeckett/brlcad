@@ -3,6 +3,7 @@
 #include <bits/chrono.h>
 #include <chrono>
 #include <initializer_list>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -19,6 +20,7 @@
 #include "src/bbox.h"
 #include "src/executor.h"
 #include "src/thread_pool.h"
+#include "src/vec.h"
 #include "vmath.h"
 
 #include "src/bvh.h"
@@ -62,10 +64,12 @@ struct Accel {
   using Node    = bvh::v2::Node<Scalar, 3>;
   using Bvh     = bvh::v2::Bvh<Node>;
   using Ray     = bvh::v2::Ray<Scalar, 3>;
+  using PtrTri  = bvh::v2::PtrTri<Scalar, 3>;
   using PrecomputedTri = bvh::v2::PrecomputedTri<Scalar>;
 
   Bvh bvh;
   std::vector<PrecomputedTri> tris;
+  std::vector<Tri> ptrTris;
 };
 
 /**
@@ -128,8 +132,8 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   config.quality = BVH::DefaultBuilder<Node>::Quality::Low;
 
 
-  // BVH::ThreadPool threadpool;
-  BVH::ThreadPool threadpool( bu_avail_cpus() );
+  BVH::ThreadPool threadpool( 1 );
+  // BVH::ThreadPool threadpool( bu_avail_cpus() );
   BVH::ParallelExecutor executor( threadpool );
 
   BBox model_bbox = BBox::make_empty();
@@ -139,21 +143,57 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
 
   std::cout << "Made threadpool and executor!" << std::endl;
 
-  executor.for_each( 0, bot_ip->num_faces, [&bot_ip, &centers, &bboxes, &tris, &model_bbox](size_t begin, size_t end) -> void {
-    for( unsigned i = begin; i < end; ++i ) {
-      auto face = bot_ip->faces[i];
-      auto tri_idx = face * 3 * 3;
-      Float * v0 = bot_ip->vertices + tri_idx;
-      Float * v1 = bot_ip->vertices + tri_idx + 3;
-      Float * v2 = bot_ip->vertices + tri_idx + 6;
-      PtrTri tri( v0, v1, v2 );
+  auto vecString = [](Float * vec) -> std::string {
+    std::stringstream ss;
+    ss << std::setprecision( 3 );
+    ss << vec[0] << " " << vec[1] << " " << vec[2];
+    return ss.str();
+  };
 
-      centers[i] = tri.get_center();
-      bboxes[i] = tri.get_bbox();
-      tris[i] = tri;
-      model_bbox.extend( bboxes[i] );
-    }
-  });
+  accel.ptrTris.resize( bot_ip->num_faces );
+  accel.tris.resize( bot_ip->num_faces );
+
+  for( unsigned i = 0; i < bot_ip->num_faces; ++i ) {
+    auto face0 = bot_ip->faces[i + 0];
+    auto face1 = bot_ip->faces[i + 1];
+    auto face2 = bot_ip->faces[i + 2];
+    Float * v0 = bot_ip->vertices + face0;
+    Float * v1 = bot_ip->vertices + face1;
+    Float * v2 = bot_ip->vertices + face2;
+    PtrTri tri( v0, v1, v2 );
+
+    std::cerr << "Triangle ( face IDX " << i << " / " << bot_ip->num_faces << " )" << std::endl;
+    std::cerr << "\tV0: " << vecString( v0 ) << std::endl;
+    std::cerr << "\tV1: " << vecString( v1 ) << std::endl;
+    std::cerr << "\tV2: " << vecString( v2 ) << std::endl;
+
+    centers[i] = tri.get_center();
+    bboxes[i] = tri.get_bbox();
+    model_bbox.extend( bboxes[i] );
+    accel.ptrTris[i] = std::move( tri );
+    accel.tris[i] = accel.ptrTris[i];
+    accel.tris[i].prim_id = i;
+  }
+  //executor.for_each( 0, bot_ip->num_faces, [&bot_ip, &centers, &bboxes, &tris, &model_bbox, &accel, vecString](size_t begin, size_t end) -> void {
+  //  for( unsigned i = begin; i < end; ++i ) {
+  //    auto face = bot_ip->faces[i];
+  //    auto tri_idx = face * 3 * 3;
+  //    Float * v0 = bot_ip->vertices + tri_idx;
+  //    Float * v1 = bot_ip->vertices + tri_idx + 3;
+  //    Float * v2 = bot_ip->vertices + tri_idx + 6;
+  //    PtrTri tri( v0, v1, v2 );
+
+  //    std::cerr << "Triangle " << face << ": ( face IDX " << i << " / " << bot_ip->num_faces << " )" << std::endl;
+  //    std::cerr << "\tV0: " << vecString( v0 ) << std::endl;
+  //    std::cerr << "\tV1: " << vecString( v1 ) << std::endl;
+  //    std::cerr << "\tV2: " << vecString( v2 ) << std::endl;
+
+  //    centers[i] = tri.get_center();
+  //    bboxes[i] = tri.get_bbox();
+  //    model_bbox.extend( bboxes[i] );
+  //    accel.ptrTris[i] = std::move( tri );
+  //  }
+  //});
 
 
   std::cout << "Bounding boxes and centers calculated" << std::endl;
@@ -161,23 +201,24 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   accel.bvh = BVH::DefaultBuilder<Node>::build( threadpool, bboxes, centers, config );
 
   std::cerr << "BVH Built! Whoop!" << std::endl;
+  std::cerr << "Num faces: " << bot_ip->num_faces << std::endl;
 
   // Precompute Triangles...
-  accel.tris.resize( bot_ip->num_faces );
-  executor.for_each( 0, bot_ip->num_faces, [&accel, &bot_ip, &tris]( size_t begin, size_t end ) {
-    for( int i = begin; i < end; i++ ) {
-      int j;
-      if constexpr ( PERMUTE_PRIMS ) {
-        j = bot_ip->faces[i];
-      }
-      else {
-        j = i;
-      }
+  // accel.tris.resize( bot_ip->num_faces );
+  // executor.for_each( 0, bot_ip->num_faces, [&accel, &bot_ip, &tris]( size_t begin, size_t end ) {
+  //   for( int i = begin; i < end; i++ ) {
+  //     int j;
+  //     if constexpr ( PERMUTE_PRIMS ) {
+  //       j = bot_ip->faces[i];
+  //     }
+  //     else {
+  //       j = i;
+  //     }
 
-      accel.tris[i] = tris[j];
-      accel.tris[i].prim_id = bot_ip->faces[i];
-    }
-  });
+  //     accel.tris[i] = accel.ptrTris[i];
+  //     accel.tris[i].prim_id = j;
+  //   }
+  // });
 
   std::cerr << "Triangles Computed!" << std::endl;
 
@@ -263,6 +304,13 @@ hitfunc(struct tie_ray_s *ray, struct tie_id_s *id, struct tie_tri_s *UNUSED(tri
   hp->hit_magic = RT_HIT_MAGIC;
   hp->hit_dist = id->dist;
 
+  // ADDED BY CAPSTONE TEAM
+  // bvh::v2::Vec<fastf_t, 3, false> r_dir( ray->dir ), r_org( ray->pos );
+  // auto pos = r_dir * id->dist + r_org;
+  // VMOVE( hp->hit_point, pos.values );
+  VJOIN1( hp->hit_point, ray->pos, id->dist, ray->dir );
+  VMOVE( hp->hit_normal, id->norm );
+
   /* hit_vpriv is used later to clean up odd hits, exit before entrance, or
    * dangling entrance in bot_makesegs_(). When TIE was leaving this
    * unset, BOT hits were disappearing from the segment depending on the
@@ -270,6 +318,7 @@ hitfunc(struct tie_ray_s *ray, struct tie_id_s *id, struct tie_tri_s *UNUSED(tri
    * ray direction. */
   VMOVE(tsp->tri_N, id->norm);
   hp->hit_vpriv[X] = VDOT(tsp->tri_N, ray->dir);
+  tsp->tri_normals = tsp->tri_N;
 
   /* Of the hit_vpriv assignments added in commit 50164, only hit_vpriv[X]
    * was based on initialized calculations.  Rather than leaving the other
@@ -335,6 +384,14 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
   Ray bvhray( ray.pos, ray.dir, rp->r_min, rp->r_max );
   Float hit_isect = std::numeric_limits<Float>::max();
   size_t hit_prim = -1;
+
+  auto vecString = [](Float * vec) -> std::string {
+    std::stringstream ss;
+    ss << std::setprecision( 3 );
+    ss << vec[0] << " " << vec[1] << " " << vec[2];
+    return ss.str();
+  };
+
   accel.bvh.template intersect<false, false>( bvhray, accel.bvh.get_root().index, stack, [&](size_t begin, size_t end) {
     bool hit = false;
     for( int i = begin; i < end; ++i ) {
@@ -358,12 +415,22 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
         tie_ray_s tie_ray;
 
         auto prim_id = accel.tris[j].prim_id;
+        auto tri = accel.ptrTris[j];
 
-        Float *A = &((Float*)bot->bot_facearray)[ prim_id + 0 ];
-        Float *B = &((Float*)bot->bot_facearray)[ prim_id + 1 ];
-        Float *C = &((Float*)bot->bot_facearray)[ prim_id + 2 ];
 
-        Float AC[3], AB[3], NORM;
+        // auto face0 = ((unsigned int*)bot->bot_facelist)[i + 0];
+        // auto face1 = ((unsigned int*)bot->bot_facelist)[i + 1];
+        // auto face2 = ((unsigned int*)bot->bot_facelist)[i + 2];
+
+        Float *A = tri.p0.values; // &((Float*)bot->bot_facearray)[ face0 ];
+        Float *B = tri.p1.values; // &((Float*)bot->bot_facearray)[ face1 ];
+        Float *C = tri.p2.values; // &((Float*)bot->bot_facearray)[ face2 ];
+        // std::cerr << "Triangle " << j << ":" << std::endl;
+        // std::cerr << "\tA: " << vecString( A ) << std::endl;
+        // std::cerr << "\tB: " << vecString( B ) << std::endl;
+        // std::cerr << "\tC: " << vecString( C ) << std::endl;
+
+        Float AC[3], AB[3];
         VSUB2(AC, C, A);
         VSUB2(AB, B, A);
         VCROSS(tie_id.norm, AC, AB);
@@ -373,26 +440,42 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
         VMOVE(tie_ray.dir, bvhray.dir.values );
         VMOVE(tie_ray.pos, bvhray.org.values );
 
+        struct tri_specific * ts = hitdata.ts + hitdata.nhits;
+
+        ts->tri_normals = ts->tri_N;
+
         auto hfret = hitfunc( &tie_ray, &tie_id, nullptr, &hitdata );
         if( hfret != nullptr ) {
           throw std::runtime_error("Too many hits!!!");
         }
+        break;
       }
 
     }
     return hit;
   });
 
+
   // if( hit_prim != -1 ) {
   //   printf("Found hit(%4d). T = %.4f  ID=%5d\n", shot_number, hit_isect, hit_prim );
   //   printf("Hit number %d\n", ++hit_number );
   // }
 
-  if( hit_prim != -1 ) {
+  if( hitdata.nhits > 0 ) {
     for (i = 0; i < hitdata.nhits; i++)
       hitdata.hits[i].hit_dist = hitdata.hits[i].hit_dist - dirlen;
-    for (i = 0; i < hitdata.nhits; i++)
+    for (i = 1; i < hitdata.nhits; i++) {
         hitdata.hits[i].hit_surfno = 0;
+    }
+
+    std::sort( hitdata.hits, hitdata.hits + hitdata.nhits, []( struct hit const & h1, struct hit const & h2 ) {
+        return h1.hit_dist < h2.hit_dist;
+    });
+
+    // printf("Closest Hit: %.3f : %.3f %.3f %.3f\n", hitdata.hits[0].hit_dist, hitdata.hits[0].hit_point[0]
+    //                                                                        , hitdata.hits[0].hit_point[1]
+    //                                                                        , hitdata.hits[0].hit_point[2] );
+
     return rt_bot_makesegs( hitdata.hits, hitdata.nhits, stp, rp, ap, seghead, nullptr );
   }
 
