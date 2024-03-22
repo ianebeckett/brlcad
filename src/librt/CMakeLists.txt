@@ -249,7 +249,7 @@
   )
 
 set_source_files_properties(gdiam/gdiam.cpp PROPERTIES COMPILE_FLAGS -w)
-set_source_files_properties(primitives/bot/MadmannBVH/bvh_impl.cpp PROPERTIES COMPILE_FLAGS -std=c++20 )
+set_source_files_properties(primitives/bot/MadmannBVH/bvh_impl.cpp PROPERTIES COMPILE_FLAGS "-std=c++20 -DFP_FAST_FMAF -mfma" )
 
 
 if(BRLCAD_ENABLE_GCT)

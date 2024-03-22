@@ -17,6 +17,7 @@
 
 #include "bu/parallel.h"
 #include "common.h"
+#include "src/binned_sah_builder.h"
 #include "vmath.h"
 #include "../../../librt_private.h"
 
@@ -133,13 +134,6 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   bot->nanort = bot_ip->nanort = new Accel<Float>();
   Accel<Float> & accel = *(Accel<Float>*)bot_ip->nanort;
 
-  // nanort::BVHBuildOptions<Float> build_options;
-  // build_options.min_primitives_for_parallel_build = 0;
-  // nanort::BVHAccel<Float> * accel = new nanort::BVHAccel<Float>();
-  typename BVH::DefaultBuilder<Node>::Config config;
-  config.quality = BVH::DefaultBuilder<Node>::Quality::High;
-
-
   // BVH::ThreadPool threadpool( 1 );
   BVH::ThreadPool threadpool( bu_avail_cpus() );
   BVH::ParallelExecutor executor( threadpool );
@@ -147,8 +141,6 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   BBox model_bbox = BBox::make_empty();
   std::vector<BBox> bboxes( bot_ip->num_faces );
   std::vector<Vec3> centers( bot_ip->num_faces );
-
-  std::cout << "Made threadpool and executor!" << std::endl;
 
   auto vecString = [](Float * vec) -> std::string {
     std::stringstream ss;
@@ -160,8 +152,6 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   accel.ptrTris.resize( bot_ip->num_faces );
   accel.tris.resize( bot_ip->num_faces );
 
-  // Face Array
-  // [v0] [v1] [v2] [v0]
   executor.for_each( 0, bot_ip->num_faces, [&](size_t start, size_t end) {
     for( unsigned i = start; i < end; ++i ) {
       auto face0 = 3 * bot_ip->faces[3*i + 0];
@@ -179,12 +169,9 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
     }
   });
 
-  std::cout << "Bounding boxes and centers calculated" << std::endl;
-
+  typename BVH::DefaultBuilder<Node>::Config config;
+  config.quality = BVH::DefaultBuilder<Node>::Quality::High;
   accel.bvh = BVH::DefaultBuilder<Node>::build( threadpool, bboxes, centers, config );
-
-  std::cerr << "BVH Built! Whoop!" << std::endl;
-  std::cerr << "Num faces: " << bot_ip->num_faces << std::endl;
 
   // Precompute Triangles...
   executor.for_each( 0, bot_ip->num_faces, [&](size_t begin, size_t end) {
@@ -316,7 +303,6 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
   fastf_t dirlen;
   struct hitdata_s hitdata;
 
-
   tie = (struct tie_s *)bot->tie;
 
   hitdata.nhits = 0;
@@ -360,11 +346,11 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
           hit_isect = bvhray.tmax;
         }
 
-        auto tri = accel.ptrTris[j];
+        auto const & tri = accel.ptrTris[j];
 
-        Float *A = tri.p0.values; // &((Float*)bot->bot_facearray)[ face0 ];
-        Float *B = tri.p1.values; // &((Float*)bot->bot_facearray)[ face1 ];
-        Float *C = tri.p2.values; // &((Float*)bot->bot_facearray)[ face2 ];
+        Float const* A = tri.p0.values; // &((Float*)bot->bot_facearray)[ face0 ];
+        Float const* B = tri.p1.values; // &((Float*)bot->bot_facearray)[ face1 ];
+        Float const* C = tri.p2.values; // &((Float*)bot->bot_facearray)[ face2 ];
 
         Float AC[3], AB[3];
         VSUB2(AC, C, A);
@@ -391,10 +377,9 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
   });
 
   if( hitdata.nhits > 0 ) {
-    for (i = 0; i < hitdata.nhits; i++)
-      hitdata.hits[i].hit_dist = hitdata.hits[i].hit_dist - dirlen;
     for (i = 1; i < hitdata.nhits; i++) {
-        hitdata.hits[i].hit_surfno = 0;
+      hitdata.hits[i].hit_dist = hitdata.hits[i].hit_dist - dirlen;
+      hitdata.hits[i].hit_surfno = 0;
     }
 
     std::sort( hitdata.hits, hitdata.hits + hitdata.nhits, []( struct hit const & h1, struct hit const & h2 ) {

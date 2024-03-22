@@ -6,9 +6,12 @@
 #include <stack>
 #include <tuple>
 #include <algorithm>
+#include <span>
 #include <optional>
 #include <numeric>
 #include <cassert>
+
+#include <vmath.h>
 
 namespace bvh::v2 {
 
@@ -89,7 +92,10 @@ protected:
         auto bin_offset = -bbox.min * bin_scale;
 
         for (size_t i = begin; i < end; ++i) {
-            auto pos = fast_mul_add(centers_[prim_ids_[i]], bin_scale, bin_offset);
+            Vec pos;
+            pos = fast_mul_add(centers_[prim_ids_[i]], bin_scale, bin_offset);
+            // VMULADD( pos.values, centers_[prim_ids_[i]].values, bin_scale.values, bin_offset.values );
+
             static_for<0, Node::dimension>([&] (size_t axis) {
                 size_t index = std::min(BinCount - 1,
                     static_cast<size_t>(robust_max(pos[axis], static_cast<Scalar>(0.))));

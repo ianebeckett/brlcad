@@ -3,6 +3,8 @@
 
 #include "utils.h"
 
+#include <vmath.h>
+
 #include <cstddef>
 #include <numeric>
 #include <cmath>
@@ -94,7 +96,14 @@ struct Vec {
 
 template <typename T, size_t N, bool B1, bool B2>
 BVH_ALWAYS_INLINE Vec<T, N> operator + (const Vec<T, N, B1>& a, const Vec<T, N, B2>& b) {
+  if constexpr ( N == -1 ) {
+    Vec<T, N> result;
+    VADD2( result.values, a.values, b.values );
+    return result;
+  }
+  else {
     return Vec<T, N, true>::generate([&] (size_t i) { return a[i] + b[i]; });
+  }
 }
 
 template <typename T, size_t N, bool B1, bool B2>
@@ -157,7 +166,14 @@ BVH_ALWAYS_INLINE Vec<T, 3> cross(const Vec<T, 3, b1>& a, const Vec<T, 3, b2>& b
 
 template <typename T, size_t N, bool B1, bool B2, bool B3>
 BVH_ALWAYS_INLINE Vec<T, N> fast_mul_add(const Vec<T, N, B1>& a, const Vec<T, N, B2>& b, const Vec<T, N, B3>& c) {
+  if constexpr( N == -1 ) {
+    Vec<T,N> result;
+    VJOIN1( result.values, c.values, a.values, b.values );
+    return result;
+  }
+  else {
     return Vec<T, N>::generate([&] (size_t i) { return fast_mul_add(a[i], b[i], c[i]); });
+  }
 }
 
 template <typename T, size_t N, bool B1>
