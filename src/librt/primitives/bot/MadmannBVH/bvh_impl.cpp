@@ -3,7 +3,6 @@
 #include <bits/chrono.h>
 #include <initializer_list>
 #include <iomanip>
-#include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <type_traits>
@@ -17,7 +16,6 @@
 
 #include "bu/parallel.h"
 #include "common.h"
-#include "src/binned_sah_builder.h"
 #include "vmath.h"
 #include "../../../librt_private.h"
 
@@ -182,8 +180,8 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
     }
   });
 
+  bu_log( "Built BVH with %d triangles\n", bot_ip->num_faces );
 
-  std::cerr << "Triangles Computed!" << std::endl;
 
   // // Set the min and max bounding boxes.
   VMOVE( stp->st_min, model_bbox.min.values );
@@ -392,4 +390,12 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
 
   return 0;
 
+}
+
+template<typename Float>
+void bvh_free( struct bot_specific * bot ) {
+  auto * accel = (Accel<Float>*)bot->nanort;
+  bot->nanort = nullptr;
+
+  delete accel;
 }

@@ -702,6 +702,9 @@ rt_bot_free(struct soltab *stp)
 	bottie_free_double(bot->tie);
 	bot->tie = NULL;
     }
+    else if( bot->nanort != NULL ) {
+        bvh_free_double( bot );
+    }
 
     if (bot->bot_flags & RT_BOT_USE_FLOATS) {
 	bot_free_float(bot);

@@ -1123,6 +1123,15 @@ typedef enum vmath_matrix_component_ {
     } while (0)
 
 /**
+ * @brief Perform a pairwise add-multiply on 3 vectors. o = a + b * c;
+ */
+#define VMULADD(o, a, b, c) do { \
+        (o)[X] = (a)[X] + (b)[X] * (c)[X]; \
+        (o)[Y] = (a)[Y] + (b)[Y] * (c)[Y]; \
+        (o)[Z] = (a)[Z] + (b)[Z] * (c)[Z]; \
+    } while (0)
+
+/**
  * @brief Scale vector of length `n' at `v' by scalar `s', store
  * result at `o'
  */
