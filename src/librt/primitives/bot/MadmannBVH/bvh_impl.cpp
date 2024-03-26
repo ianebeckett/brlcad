@@ -125,8 +125,8 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   }
 
 
-  bot->bot_facelist = bot_ip->faces;
-  bot->bot_facearray = (void**)bot_ip->vertices;
+  bot->bot_facelist = nullptr; //bot_ip->faces;
+  bot->bot_facearray = nullptr; //(void**)bot_ip->vertices;
   bot->bot_ntri = bot_ip->num_faces * 3;
 
   bot->nanort = bot_ip->nanort = new Accel<Float>();
