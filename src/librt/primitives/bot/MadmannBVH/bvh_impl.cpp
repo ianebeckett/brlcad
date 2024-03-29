@@ -54,6 +54,21 @@ F min( F f, Float ... floats ) {
   return ilist_func_apply( std::min, f, floats ... );
 }
 
+template< typename T >
+class BuAllocator {
+  private:
+  public:
+    using value_type = T;
+    using pointer = T*;
+    pointer allocate(size_t amt) {
+      return static_cast< pointer >( bu_malloc( sizeof(T) * amt,"BuAllocator" ) );
+    }
+
+    void deallocate( pointer ptr, size_t amt ) {
+      bu_free( ptr, "BuAllocator" );
+    }
+};
+
 template< typename Float >
 struct Accel {
   using Scalar  = Float;
@@ -77,7 +92,7 @@ struct Accel {
   };
 
   Bvh bvh;
-  std::vector<PrecomputedTri> tris;
+  std::vector<PrecomputedTri, BuAllocator<PrecomputedTri> > tris;
   std::vector<Tri> ptrTris;
   std::vector< Normal > normals;
 
