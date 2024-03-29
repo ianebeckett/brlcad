@@ -3,6 +3,7 @@
 #include <bits/chrono.h>
 #include <initializer_list>
 #include <iomanip>
+#include <ios>
 #include <limits>
 #include <stdexcept>
 #include <type_traits>
@@ -65,9 +66,20 @@ struct Accel {
   using PtrTri  = bvh::v2::PtrTri<Scalar, 3>;
   using PrecomputedTri = bvh::v2::PrecomputedTri<Scalar>;
 
+  struct Normal {
+    Float values[9];
+
+    inline Float& operator[](size_t s) { return values[s]; }
+
+    inline operator Float*() {
+      return values;
+    }
+  };
+
   Bvh bvh;
   std::vector<PrecomputedTri> tris;
   std::vector<Tri> ptrTris;
+  std::vector< Normal > normals;
 
   bvh::v2::SmallStack<typename Bvh::Index, 128 > * stacks;
 
@@ -109,7 +121,7 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   bot->bot_flags = bot_ip->bot_flags;
   bot_ip->nanort = bot->nanort = nullptr;
   bot_ip->tie = NULL;
-  printf("Mode: %d\nOrientation: %d\n", bot_ip->mode, bot_ip->orientation );
+  // printf("Mode: %d\nOrientation: %d\n", bot_ip->mode, bot_ip->orientation );
   if (bot_ip->thickness) {
     bot->bot_thickness = (fastf_t *)bu_calloc(bot_ip->num_faces, sizeof(fastf_t), "bot_thickness");
     for (tri_index = 0; tri_index < bot_ip->num_faces; tri_index++)
@@ -123,6 +135,10 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   } else {
     bot->bot_facemode = BU_BITV_NULL;
   }
+
+  bool has_normals = ( bot_ip->bot_flags & RT_BOT_HAS_SURFACE_NORMALS )
+                 and ( bot_ip->bot_flags & RT_BOT_USE_NORMALS )
+                 and ( bot_ip->num_normals > 0 );
 
 
   bot->bot_facelist = nullptr; //bot_ip->faces;
@@ -149,6 +165,14 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
 
   accel.ptrTris.resize( bot_ip->num_faces );
   accel.tris.resize( bot_ip->num_faces );
+  accel.normals.resize( bot_ip->num_faces );
+
+  // CALCULATE DO_NORMALS FLAG
+  // IF DO_NORMALS, ALLOCATE 9 * num_faces Floats
+  //
+
+  // std::cerr << "Have normals?: " << std::boolalpha << has_normals << std::endl;
+  // std::cerr << "Num normals: " << bot_ip->num_face_normals << std::endl;
 
   executor.for_each( 0, bot_ip->num_faces, [&](size_t start, size_t end) {
     for( unsigned i = start; i < end; ++i ) {
@@ -164,6 +188,20 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
       bboxes[i] = tri.get_bbox();
       model_bbox.extend( bboxes[i] );
       accel.ptrTris[i] = std::move( tri );
+
+      if( has_normals and bot_ip->num_face_normals > i ) {
+        long idx[3];
+        VMOVE( idx, &bot_ip->face_normals[ 3 * i ] );
+        if (idx[0] >= 0 and idx[0] < bot_ip->num_normals and
+            idx[1] >= 0 and idx[1] < bot_ip->num_normals and
+            idx[2] >= 0 and idx[2] < bot_ip->num_normals)
+        {
+          auto & norm = accel.normals[ i ];
+          VMOVE( &norm[0*3], &bot_ip->normals[ idx[0] * 3] );
+          VMOVE( &norm[1*3], &bot_ip->normals[ idx[1] * 3] );
+          VMOVE( &norm[2*3], &bot_ip->normals[ idx[2] * 3] );
+        }
+      }
     }
   });
 
@@ -180,7 +218,7 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
     }
   });
 
-  bu_log( "Built BVH with %d triangles\n", bot_ip->num_faces );
+  // bu_log( "Built BVH with %d triangles\n", bot_ip->num_faces );
 
 
   // // Set the min and max bounding boxes.
@@ -193,16 +231,23 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   // Calculate center of bounding box
   VMOVE( stp->st_center, model_bbox.get_center().values );
 
-  // TODO: How to calculate this?
-  // FIXME: Actually calculate. Currently just the max of the distances from the center...
-  auto radius = max( std::abs( stp->st_max[0] - stp->st_center[0] ),
-                                std::abs( stp->st_max[1] - stp->st_center[1] ),
-                                std::abs( stp->st_max[2] - stp->st_center[2] ),
-                                std::abs( stp->st_center[0] - stp->st_min[0] ),
-                                std::abs( stp->st_center[1] - stp->st_min[1] ),
-                                std::abs( stp->st_center[2] - stp->st_min[2] ) );
-  stp->st_aradius = radius;
-  stp->st_bradius = radius;
+  VADD2SCALE( stp->st_center, stp->st_min, stp->st_max, 0.5 );
+  point_t dist_vec;
+  VSUB2SCALE( dist_vec, stp->st_max, stp->st_min, 0.5 );
+  stp->st_aradius = FMAX( dist_vec[0], FMAX( dist_vec[1], dist_vec[2] ) );
+  stp->st_bradius = MAGNITUDE( dist_vec );
+
+
+  // // TODO: How to calculate this?
+  // // FIXME: Actually calculate. Currently just the max of the distances from the center...
+  // auto radius = max( std::abs( stp->st_max[0] - stp->st_center[0] ),
+  //                               std::abs( stp->st_max[1] - stp->st_center[1] ),
+  //                               std::abs( stp->st_max[2] - stp->st_center[2] ),
+  //                               std::abs( stp->st_center[0] - stp->st_min[0] ),
+  //                               std::abs( stp->st_center[1] - stp->st_min[1] ),
+  //                               std::abs( stp->st_center[2] - stp->st_min[2] ) );
+  // stp->st_aradius = radius;
+  // stp->st_bradius = radius;
 
   return 0;
 }
@@ -312,9 +357,14 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
   VSUB2(ray.pos, rp->r_pt, rp->r_dir);	/* step back one dirlen */
   VMOVE(ray.dir, rp->r_dir);
 
-  Ray bvhray( ray.pos, ray.dir, rp->r_min, rp->r_max );
+  auto max_t = DIST_PNT_PNT( stp->st_max, stp->st_min ) + stp->st_bradius;
+
+  Ray bvhray( ray.pos, ray.dir, rp->r_min, max_t );
   Float hit_isect = std::numeric_limits<Float>::max();
   size_t hit_prim = -1;
+
+  // TODO: Use proper bounding volume "back wall"
+  // bvhray.tmax = std::numeric_limits<Float>::max();
 
   auto vecString = [](Float * vec) -> std::string {
     std::stringstream ss;
@@ -361,13 +411,19 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
         VMOVE(tie_ray.pos, bvhray.org.values );
 
         struct tri_specific * ts = hitdata.ts + hitdata.nhits;
+        struct hit * hit = &hitdata.hits[ hitdata.nhits ];
 
-        ts->tri_normals = nullptr; // ts->tri_N;
+        ts->tri_normals = accel.normals[j]; // nullptr; // ts->tri_N;
 
         auto hfret = hitfunc( &tie_ray, &tie_id, nullptr, &hitdata );
         if( hfret != nullptr ) {
           throw std::runtime_error("Too many hits!!!");
         }
+
+        // hit->hit_vpriv[X] = tie_id.alpha;
+        hit->hit_vpriv[Z] = tie_id.beta;
+        hit->hit_vpriv[Y] = tie_id.alpha;
+
       }
 
     }
@@ -398,4 +454,65 @@ void bvh_free( struct bot_specific * bot ) {
   bot->nanort = nullptr;
 
   delete accel;
+}
+
+template< typename Float >
+void bvh_bot_norm( struct bot_specific* bot, struct hit* hitp, struct xray * rp ) {
+
+  constexpr Float ONE_OVER_SCALE = ( std::is_same_v<Float, double> ) ? 1.0 : 1.0 / 127.0;
+
+  vect_t old_norm;
+  struct tri_specific * trip = (struct tri_specific *) hitp->hit_private;
+  // CPP_XGLUE(tri_specific_, TRI_TYPE) *trip=(CPP_XGLUE(tri_specific_, TRI_TYPE) *)hitp->hit_private;
+
+  VJOIN1(hitp->hit_point, rp->r_pt, hitp->hit_dist, rp->r_dir);
+  VMOVE(old_norm, hitp->hit_normal);
+
+  if ((bot->bot_flags & RT_BOT_HAS_SURFACE_NORMALS) and (bot->bot_flags & RT_BOT_USE_NORMALS) and trip->tri_normals) {
+    fastf_t old_ray_dot_norm, new_ray_dot_norm;
+    fastf_t u, v, w; /*barycentric coords of hit point */
+    size_t i;
+
+    old_ray_dot_norm = VDOT(hitp->hit_normal, rp->r_dir);
+
+    v = hitp->hit_vpriv[Y];
+    if (v < 0.0) v = 0.0;
+    if (v > 1.0) v = 1.0;
+
+    w = hitp->hit_vpriv[Z];
+    if (w < 0.0) w = 0.0;
+    if (w > 1.0) w =  1.0;
+
+    u = 1.0 - v - w;
+    if (u < 0.0) u = 0.0;
+    VSETALL(hitp->hit_normal, 0.0);
+
+    for (i = X; i <= Z; i++) {
+      hitp->hit_normal[i] = u*trip->tri_normals[i]*ONE_OVER_SCALE + v*trip->tri_normals[i+3]*ONE_OVER_SCALE + w*trip->tri_normals[i+6]*ONE_OVER_SCALE;
+    }
+    VUNITIZE(hitp->hit_normal);
+
+    if (bot->bot_mode == RT_BOT_PLATE || bot->bot_mode == RT_BOT_PLATE_NOCOS) {
+        if (VDOT(old_norm, hitp->hit_normal) < 0.0) {
+          VREVERSE(hitp->hit_normal, hitp->hit_normal);
+        }
+    }
+
+    new_ray_dot_norm = VDOT(hitp->hit_normal, rp->r_dir);
+
+    if ((old_ray_dot_norm < 0.0 && new_ray_dot_norm > 0.0) ||
+        (old_ray_dot_norm > 0.0 && new_ray_dot_norm < 0.0)) {
+        /* surface normal interpolation has produced an
+         * incompatible normal direction clamp the normal to 90
+         * degrees to the ray direction
+         */
+
+        vect_t tmp;
+
+        VCROSS(tmp, rp->r_dir, hitp->hit_normal);
+        VCROSS(hitp->hit_normal, tmp, rp->r_dir);
+    }
+
+    VUNITIZE(hitp->hit_normal);
+  }
 }

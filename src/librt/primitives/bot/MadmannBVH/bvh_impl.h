@@ -25,6 +25,9 @@ int bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struct
 
 template< typename Float >
 void bvh_free( struct bot_specific * bot );
+
+template< typename Float >
+void bvh_bot_norm( struct bot_specific*, struct hit*, struct xray * );
 #endif
 
 
@@ -43,6 +46,7 @@ extern "C" {
   int bvh_shot_float(struct soltab *stp, struct xray *rp, struct application *ap, struct seg *seghead);
 
 
+  void bot_norm_madmann( struct bot_specific *, struct hit *, struct xray * );
 #ifdef __cplusplus
 }
 #endif
@@ -72,7 +76,12 @@ extern "C" {
     bvh_free<fastf_t>( bot );
   }
 
+  void bot_norm_madmann( struct bot_specific * bot, struct hit * hitp, struct xray * rp ) {
+    bvh_bot_norm<fastf_t>( bot, hitp, rp );
+  }
 }
 #endif
 
 #endif
+
+

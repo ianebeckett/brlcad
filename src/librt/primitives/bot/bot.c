@@ -638,7 +638,11 @@ rt_bot_norm(struct hit *hitp, struct soltab *stp, struct xray *rp)
 {
     struct bot_specific *bot=(struct bot_specific *)stp->st_specific;
 
-    if (bot->bot_flags & RT_BOT_USE_FLOATS) {
+    if( bot->nanort != NULL ) {
+      // Use custom norm_FLOAT function
+      bot_norm_madmann( bot, hitp, rp );
+    }
+    else if (bot->bot_flags & RT_BOT_USE_FLOATS) {
 	bot_norm_float(bot, hitp, rp);
     } else {
 	bot_norm_double(bot, hitp, rp);
