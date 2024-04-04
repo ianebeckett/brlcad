@@ -17,6 +17,7 @@
 
 #include "bu/parallel.h"
 #include "common.h"
+#include "src/ray.h"
 #include "vmath.h"
 #include "../../../librt_private.h"
 
@@ -31,6 +32,36 @@
 
 
 #define PERMUTE_PRIMS false
+
+#ifndef MAXHITS
+#define MAXHITS 256
+#endif
+
+extern "C" {
+   int bvh_build_double( struct soltab *stp, struct rt_bot_internal *bot, struct rt_i *rtip ) {
+    return bvh_build<fastf_t>(stp,bot,rtip);
+  }
+   int bvh_shot_double(struct soltab *stp, struct xray *rp, struct application *ap, struct seg *seghead) {
+    return bvh_shot<fastf_t>(stp,rp,ap,seghead);
+  }
+   int bvh_build_float( struct soltab *stp, struct rt_bot_internal *bot, struct rt_i *rtip ) {
+    return bvh_build<fastf_t>(stp,bot,rtip);
+  }
+   int bvh_shot_float(struct soltab *stp, struct xray *rp, struct application *ap, struct seg *seghead) {
+    return bvh_shot<fastf_t>(stp,rp,ap,seghead);
+  }
+
+  void bvh_free_double( struct bot_specific * bot ) {
+    bvh_free<fastf_t>( bot );
+  }
+  void bvh_free_float( struct bot_specific * bot ) {
+    bvh_free<fastf_t>( bot );
+  }
+
+  void bot_norm_madmann( struct bot_specific * bot, struct hit * hitp, struct xray * rp ) {
+    bvh_bot_norm<fastf_t>( bot, hitp, rp );
+  }
+}
 
 namespace BVH = bvh::v2;
 
@@ -89,6 +120,10 @@ struct Accel {
     inline operator Float*() {
       return values;
     }
+
+    inline Float* n0() { return values; }
+    inline Float* n1() { return values + 3; }
+    inline Float* n2() { return values + 6; }
   };
 
   Bvh bvh;
@@ -96,7 +131,7 @@ struct Accel {
   std::vector<Tri> ptrTris;
   std::vector< Normal > normals;
 
-  bvh::v2::SmallStack<typename Bvh::Index, 128 > * stacks;
+  bvh::v2::SmallStack<typename Bvh::Index, MAXHITS > * stacks;
 
   Accel()
     : stacks( new std::decay_t<decltype(*stacks)>[ bu_avail_cpus() ] ) {}
@@ -180,7 +215,9 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
 
   accel.ptrTris.resize( bot_ip->num_faces );
   accel.tris.resize( bot_ip->num_faces );
-  accel.normals.resize( bot_ip->num_faces );
+  if( has_normals && bot_ip->num_normals > 0 ) {
+    accel.normals.resize( bot_ip->num_faces );
+  }
 
   // CALCULATE DO_NORMALS FLAG
   // IF DO_NORMALS, ALLOCATE 9 * num_faces Floats
@@ -190,6 +227,7 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   // std::cerr << "Num normals: " << bot_ip->num_face_normals << std::endl;
 
   executor.for_each( 0, bot_ip->num_faces, [&](size_t start, size_t end) {
+    // for( unsigned i = 0; i < bot_ip->num_faces; ++i ) {
     for( unsigned i = start; i < end; ++i ) {
       auto face0 = 3 * bot_ip->faces[3*i + 0];
       auto face1 = 3 * bot_ip->faces[3*i + 1];
@@ -217,8 +255,12 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
           VMOVE( &norm[2*3], &bot_ip->normals[ idx[2] * 3] );
         }
       }
+      else if( has_normals ) {
+        printf("Face %d has no normal!\n", i);
+      }
     }
   });
+
 
   typename BVH::DefaultBuilder<Node>::Config config;
   config.quality = BVH::DefaultBuilder<Node>::Quality::High;
@@ -226,7 +268,8 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
 
   // Precompute Triangles...
   executor.for_each( 0, bot_ip->num_faces, [&](size_t begin, size_t end) {
-    for( int i = 0; i < bot_ip->num_faces; ++i ) {
+    // for( int  i = 0; i < bot_ip->num_faces; ++i ) {
+    for( int i = begin; i < end; ++i ) {
       int j = PERMUTE_PRIMS ? accel.bvh.prim_ids[i] : i;
       accel.tris[i] = accel.ptrTris[j];
       accel.tris[i].prim_id = j;
@@ -239,6 +282,17 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   // // Set the min and max bounding boxes.
   VMOVE( stp->st_min, model_bbox.min.values );
   VMOVE( stp->st_max, model_bbox.max.values );
+
+  std::cout << "Model Bounding Box: " << std::endl;
+  std::cout << "MAX:" << std::endl;
+  std::cout << "\tX:" << model_bbox.max.values[0] << std::endl;
+  std::cout << "\tY:" << model_bbox.max.values[1] << std::endl;
+  std::cout << "\tZ:" << model_bbox.max.values[2] << std::endl;
+  std::cout << "MIN:" << std::endl;
+  std::cout << "\tX:" << model_bbox.min.values[0] << std::endl;
+  std::cout << "\tY:" << model_bbox.min.values[1] << std::endl;
+  std::cout << "\tZ:" << model_bbox.min.values[2] << std::endl;
+
 
   /* zero thickness will get missed by the raytracer */
   BBOX_NONDEGEN(stp->st_min, stp->st_max, rtip->rti_tol.dist);
@@ -267,9 +321,6 @@ int bvh_build( struct soltab *stp, struct rt_bot_internal *bot_ip, struct rt_i *
   return 0;
 }
 
-#ifndef MAXHITS
-#define MAXHITS 128
-#endif
 
 struct hitdata_s {
     int nhits;
@@ -337,16 +388,19 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
   static int hit_number = 0;
   shot_number++;
 
-  auto ID = bu_parallel_id() - 1;
+  int ID = bu_parallel_id() - 1;
+  if( ID >= (int)bu_avail_cpus() ) throw std::runtime_error("Bad CPU ID: " + std::to_string(ID) + " >= " + std::to_string( bu_avail_cpus() ));
+  if( ID < 0 ) ID = 0;
   constexpr size_t invalid_prim_id = std::numeric_limits<size_t>::max();
 
   using Scalar  = Float;
   using Vec3    = bvh::v2::Vec<Scalar, 3>;
+  using Vec3P   = bvh::v2::Vec<Scalar, 3, false>;
   using BBox    = bvh::v2::BBox<Scalar, 3>;
   using Tri     = bvh::v2::Tri<Scalar, 3>;
   using Node    = bvh::v2::Node<Scalar, 3>;
   using Bvh     = bvh::v2::Bvh<Node>;
-  using Ray     = bvh::v2::Ray<Scalar, 3, false>;
+  using Ray     = bvh::v2::Ray<Scalar, 3, true>;
   using PtrTri  = BVH::PtrTri<Scalar, 3>;
 
   struct bot_specific * bot = (bot_specific*)stp->st_specific;
@@ -357,7 +411,6 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
   // struct hitdata_s hitdata;
   struct tie_id_s id;
   struct tie_ray_s ray;
-  int i;
   fastf_t dirlen;
   struct hitdata_s hitdata;
 
@@ -372,16 +425,15 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
   VSUB2(ray.pos, rp->r_pt, rp->r_dir);	/* step back one dirlen */
   VMOVE(ray.dir, rp->r_dir);
 
-  auto max_t = DIST_PNT_PNT( stp->st_max, stp->st_min ) + stp->st_bradius;
+  auto max_t = DIST_PNT_PNT( stp->st_max, stp->st_min ) + stp->st_bradius * 2;
 
-  Ray bvhray( ray.pos, ray.dir, rp->r_min, max_t );
-  Float hit_isect = std::numeric_limits<Float>::max();
-  size_t hit_prim = -1;
+  Ray bvhray( Vec3P(ray.pos), Vec3P(ray.dir), rp->r_min, max_t );
+  // BVH::Ray<Float, 3, false> bvhray( ray.pos, ray.dir, rp->r_min, max_t );
 
   // TODO: Use proper bounding volume "back wall"
-  // bvhray.tmax = std::numeric_limits<Float>::max();
+  bvhray.tmax = std::numeric_limits<Float>::max();
 
-  auto vecString = [](Float * vec) -> std::string {
+  auto vecString = [](Float const * vec) -> std::string {
     std::stringstream ss;
     ss << std::setprecision( 3 );
     ss << vec[0] << " " << vec[1] << " " << vec[2];
@@ -398,16 +450,17 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
       Float isect = 0;
       auto uv = accel.tris[j].intersect( bvhray, bvhray.tmax, -std::numeric_limits<Float>::epsilon() );
       if( uv ) {
+        // printf("HIT! %d\n", shot_number);
         hit = true;
-        tie_id_s tie_id;
-        tie_ray_s tie_ray;
 
-        std::tie( tie_id.alpha, tie_id.beta ) = *uv;
+        tie_id_s id;
+        tie_ray_s ray;
 
-        if( isect < hit_isect ) {
-          hit_prim = j;
-          hit_isect = bvhray.tmax;
-        }
+        std::tie( id.alpha, id.beta ) = *uv;
+        auto const & u = id.alpha;
+        auto const & v = id.beta;
+        auto const w = 1.0 - u - v;
+
 
         auto const & tri = accel.ptrTris[j];
 
@@ -415,29 +468,77 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
         Float const* B = tri.p1.values; // &((Float*)bot->bot_facearray)[ face1 ];
         Float const* C = tri.p2.values; // &((Float*)bot->bot_facearray)[ face2 ];
 
+        // Self-calculated normal
         Float AC[3], AB[3];
         VSUB2(AC, C, A);
         VSUB2(AB, B, A);
-        VCROSS(tie_id.norm, AC, AB);
-        VUNITIZE( tie_id.norm );
-        tie_id.dist = bvhray.tmax;
+        VCROSS(id.norm, AC, AB);
+        VUNITIZE( id.norm );
 
-        VMOVE(tie_ray.dir, bvhray.dir.values );
-        VMOVE(tie_ray.pos, bvhray.org.values );
+        if( VDOT( id.norm, rp->r_dir ) < 0 ) {
+          // printf("Ray hits negative normal! %d\n", shot_number);
+          //  std::cout << "Ray direction: " << vecString( rp->r_dir ) << std::endl;
+          // std::cout << "Ray origin: " << vecString( rp->r_pt ) << std::endl;
+          // std::cout << "Index: " << rp->index << std::endl;
+          VREVERSE( id.norm, id.norm );
+        }
+
+
+        // "Correct" normal:
+        // if( not accel.normals.empty() ) {
+        //   Float NORM[3] = {0, 0, 0};
+        //   auto & norm = accel.normals[j];
+        //   for( int i = 0; i < 3; i++ ) {
+        //     NORM[i] = norm.n0()[i]*u + norm.n1()[i]*v + norm.n2()[i]*w;
+        //   }
+        //   VUNITIZE( NORM );
+        //   if( VDOT( NORM, ray.dir ) < 0 ) {
+        //     VREVERSE( NORM, NORM );
+        //   }
+
+        //   VMOVE( id.norm, NORM );
+        //   // if( id.norm[0] != NORM[0]
+        //   //  or id.norm[1] != NORM[1]
+        //   //  or id.norm[2] != NORM[2] ) {
+        //   //   std::cout << "Error: Normal from calculation and interpolated vertex normal are different!" << std::endl;
+        //   //   std::cout << "Calculated: " << vecString( id.norm ) << std::endl;
+        //   //   std::cout << "Interpolated: " << vecString( NORM ) << std::endl;
+        //   //   throw std::runtime_error("");
+        //   // }
+        // }
+
+
+
+        // Invert normal
+        // for( int ninv = 0; ninv < 3; ninv++ ) {
+        //   id.norm[ninv] *= -1.f;
+        // }
+        id.dist = bvhray.tmax;
+
+        VMOVE(ray.dir, bvhray.dir.values );
+        VMOVE(ray.pos, bvhray.org.values );
 
         struct tri_specific * ts = hitdata.ts + hitdata.nhits;
         struct hit * hit = &hitdata.hits[ hitdata.nhits ];
 
-        ts->tri_normals = accel.normals[j]; // nullptr; // ts->tri_N;
+        // hit->hit_rayp = rp;
+        if( not accel.normals.empty() ) {
+          ts->tri_normals = accel.normals[j]; // nullptr; // ts->tri_N;
+        }
+        else {
+          ts->tri_normals = nullptr;
+        }
 
-        auto hfret = hitfunc( &tie_ray, &tie_id, nullptr, &hitdata );
+        auto hfret = hitfunc( &ray, &id, nullptr, &hitdata );
         if( hfret != nullptr ) {
           throw std::runtime_error("Too many hits!!!");
         }
 
+
+
         // hit->hit_vpriv[X] = tie_id.alpha;
-        hit->hit_vpriv[Z] = tie_id.beta;
-        hit->hit_vpriv[Y] = tie_id.alpha;
+        hit->hit_vpriv[Y] = u;
+        hit->hit_vpriv[Z] = v;
 
       }
 
@@ -446,10 +547,20 @@ int  bvh_shot(struct soltab *stp, struct xray *rp, struct application *ap, struc
   });
 
   if( hitdata.nhits > 0 ) {
-    for (i = 1; i < hitdata.nhits; i++) {
+    for (int i = 0; i < hitdata.nhits; i++) {
       hitdata.hits[i].hit_dist = hitdata.hits[i].hit_dist - dirlen;
       hitdata.hits[i].hit_surfno = 0;
     }
+
+    // Add fake exit point
+    if( hitdata.nhits == 1 ) {
+      id.dist += 1;
+      for( int ninv = 0; ninv < 3; ninv++ ) {
+        id.norm[ninv] *= -1.f;
+      }
+      hitfunc( &ray, &id, nullptr, &hitdata );
+    }
+
 
     std::sort( hitdata.hits, hitdata.hits + hitdata.nhits, []( struct hit const & h1, struct hit const & h2 ) {
         return h1.hit_dist < h2.hit_dist;

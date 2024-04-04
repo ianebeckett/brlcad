@@ -28,7 +28,7 @@ struct Ray {
         : org(org), dir(dir), tmin(tmin), tmax(tmax)
     {}
 
-    template< bool DS = not DO_STORE, class = std::enable_if_t< DS > >
+    // template< bool DS = not DO_STORE, class = std::enable_if_t< DS > >
     BVH_ALWAYS_INLINE Ray(
         T * org,
         T * dir,

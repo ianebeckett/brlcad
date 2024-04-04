@@ -49,6 +49,11 @@ struct PrecomputedTri {
         : p0(p0), e1(p0 - p1), e2(p2 - p0), n(cross(e1, e2))
     {}
 
+    template< bool B, bool B2>
+    BVH_ALWAYS_INLINE PrecomputedTri(const Vec<T, 3, B>& p0, const Vec<T, 3, B>& p1, const Vec<T, 3, B>& p2, const Vec<T,3, B2>& nn)
+        : p0(p0), e1(p0 - p1), e2(p2 - p0), n(nn)
+    {}
+
     template< bool B >
     BVH_ALWAYS_INLINE PrecomputedTri(const Tri<T, 3, B>& triangle)
         : PrecomputedTri(triangle.p0, triangle.p1, triangle.p2)
