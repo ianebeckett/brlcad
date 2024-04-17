@@ -42,12 +42,15 @@ set(NOT_DISTCHECK_READY 0)
 set(CMAKE_BINARY_DIR "@CMAKE_BINARY_DIR@")
 
 # Avoid empty items in lists, so we don't trigger a CMake warning
+# Also ignore src/bext submodule
 function(scrub_list SLIST)
   set(NONEMPTY)
   foreach(sf ${${SLIST}})
-    if(NOT "${sf}" STREQUAL "")
-      list(APPEND NONEMPTY "${sf}")
-    endif(NOT "${sf}" STREQUAL "")
+    if (NOT "${sf}" STREQUAL "src/bext")
+      if(NOT "${sf}" STREQUAL "")
+	list(APPEND NONEMPTY "${sf}")
+      endif(NOT "${sf}" STREQUAL "")
+    endif (NOT "${sf}" STREQUAL "src/bext")
   endforeach(sf ${${SLIST}})
   string(REGEX REPLACE "^;" "" NONEMPTY "${NONEMPTY}")
   set(${SLIST} ${NONEMPTY} PARENT_SCOPE)
@@ -236,7 +239,8 @@ set(IGNORED_FS_FILES ${FS_FILE_LIST})
 list(REMOVE_ITEM IGNORED_FS_FILES ${BUILD_FILES})
 if(IGNORED_FS_FILES)
   string(REPLACE ";" "\n" IGNORED_FS_FILES "${IGNORED_FS_FILES}")
-  message("\nFiles unknown to both Version Control System and the Build logic (will not be incorporated into dist):\n${IGNORED_FS_FILES}\n")
+  #message("\nFiles unknown to both Version Control System and the Build logic (will not be incorporated into dist):\n${IGNORED_FS_FILES}\n")
+  message("\nFiles present unknown to both Version Control System and the Build logic (will not be incorporated into dist)\n")
 endif(IGNORED_FS_FILES)
 
 # Write out the archive status so the build targets can see it later.
